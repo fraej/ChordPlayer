@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chord Player</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        select, button {
+            padding: 8px 12px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+        }
+        button {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #f0f0f0;
+        }
+        .chord-button {
+            margin: 5px;
+            padding: 10px 15px;
+            background-color: #e3f2fd;
+        }
+        .chord-button:hover {
+            background-color: #bbdefb;
+        }
+        .voicing-button {
+            margin: 5px;
+            padding: 10px 15px;
+            background-color: #e8f5e9;
+        }
+        .voicing-button:hover {
+            background-color: #c8e6c9;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Chord Player</h1>
+        
+        <div class="controls">
+            <select id="rootNote">
+                <option value="C">C</option>
+                <option value="C#">C#</option>
+                <option value="D">D</option>
+                <option value="D#">D#</option>
+                <option value="E">E</option>
+                <option value="F">F</option>
+                <option value="F#">F#</option>
+                <option value="G">G</option>
+                <option value="G#">G#</option>
+                <option value="A">A</option>
+                <option value="A#">A#</option>
+                <option value="B">B</option>
+            </select>
+            
+            <select id="octave">
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4" selected>4</option>
+                <option value="5">5</option>
+            </select>
+            
+            <button onclick="generateChords()">Generate Chords</button>
+        </div>
+
+        <div class="section">
+            <h2>Chords</h2>
+            <div id="chordButtons"></div>
+        </div>
+
+        <div class="section">
+            <h2>Voicings</h2>
+            <div id="voicingButtons"></div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Tone.js synth
+        const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+        
+        function getAvailableChordTypes() {
+            // Get all chord types from Tonal.js
+            return Tonal.ChordType.all()
+                .sort((a, b) => a.aliases[0].localeCompare(b.aliases[0]))
+                .map(chord => ({
+                    display: chord.name || chord.aliases[0], // Use full name if available
+                    symbol: chord.aliases[0]  // Symbol for Tonal.js
+                }));
+        }
+
+        function generateChords() {
+            const rootNote = document.getElementById('rootNote').value;
+            const octave = document.getElementById('octave').value;
+            const chordButtonsContainer = document.getElementById('chordButtons');
+            chordButtonsContainer.innerHTML = '';
+            
+            document.getElementById('voicingButtons').innerHTML = '';
+
+            const chordTypes = getAvailableChordTypes();
+
+            chordTypes.forEach(({display, symbol}) => {
+                const button = document.createElement('button');
+                button.className = 'chord-button';
+                button.textContent = `${rootNote} ${display}`;
+                button.onclick = () => {
+                    playChord(rootNote, symbol, octave);
+                    showVoicings(rootNote, symbol, octave);
+                };
+                chordButtonsContainer.appendChild(button);
+            });
+        }
+
+        function getChordNotes(root, type, octave) {
+            return Tonal.Chord.get(`${root}${type}`).notes.map(note => `${note}${octave}`);
+        }
+
+        function playChord(root, type, octave) {
+            // Stop any playing notes
+            synth.releaseAll();
+            
+            // Get chord notes using Tonal.js
+            const notes = getChordNotes(root, type, octave);
+            
+            // Play the chord
+            synth.triggerAttackRelease(notes, "2n");
+        }
+
+        function getAllVoicings(rootNote, chordType, baseOctave) {
+            const chord = Tonal.Chord.get(`${rootNote}${chordType}`);
+            if (!chord || !chord.notes.length) return [];
+
+            const voicings = [];
+            const chordNotes = chord.notes;
+
+            // Get all possible inversions
+            for (let i = 0; i < chordNotes.length; i++) {
+                let inversion = [...chordNotes];
+                for (let j = 0; j < i; j++) {
+                    inversion.push(inversion.shift());
+                }
+
+                // Ensure all notes are valid using Tonal.Note.name
+                if (!inversion.every(note => Tonal.Note.name(note))) continue;
+
+                // Basic voicing
+                const basicVoicing = inversion.map(note => `${note}${baseOctave}`);
+                voicings.push(basicVoicing);
+
+                // Spread voicing
+                const spreadVoicing = inversion.map((note, index) => {
+                    const octaveOffset = Math.floor(index/2);
+                    return `${note}${parseInt(baseOctave) + octaveOffset}`;
+                });
+                voicings.push(spreadVoicing);
+
+                // Wide voicing
+                const wideVoicing = inversion.map((note, index) => {
+                    return `${note}${parseInt(baseOctave) + index}`;
+                });
+                voicings.push(wideVoicing);
+            }
+
+            // Filter out invalid voicings using Tonal.Note.name
+            return voicings.filter(voicing => 
+                voicing.length > 0 && 
+                voicing.every(note => Tonal.Note.name(note.replace(/\d+$/, '')))
+            );
+        }
+
+        function showVoicings(rootNote, chordType, baseOctave) {
+            const voicingsContainer = document.getElementById('voicingButtons');
+            voicingsContainer.innerHTML = '';
+            
+            const allVoicings = getAllVoicings(rootNote, chordType, baseOctave);
+            console.log('All voicings:', allVoicings); // Debug log
+            
+            if (allVoicings.length === 0) {
+                voicingsContainer.innerHTML = '<p>No valid voicings found</p>';
+                return;
+            }
+
+            allVoicings.forEach((voicing, index) => {
+                const button = document.createElement('button');
+                button.className = 'voicing-button';
+                button.textContent = `Voicing ${index + 1}: ${voicing.join(' ')}`;
+                button.onclick = () => {
+                    console.log('Playing voicing:', voicing); // Debug log
+                    synth.releaseAll();
+                    synth.triggerAttackRelease(voicing, "2n");
+                };
+                voicingsContainer.appendChild(button);
+            });
+        }
+
+        // Initialize with default values
+        generateChords();
+    </script>
+</body>
+</html>
