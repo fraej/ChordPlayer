@@ -43,6 +43,9 @@ function forceInitialGeneration() {
         currentRootDisplay.textContent = `Root: C`;
     }
     
+    // Update keyboard selection if available
+    updateKeyboardColors();
+    
     // Generate chords directly
     const chordButtonsContainer = document.getElementById('chordButtons');
     if (chordButtonsContainer) {
@@ -75,6 +78,7 @@ function forceInitialGeneration() {
             // Update keyboard selection if available
             if (keyboard && typeof keyboard.selectNote === 'function') {
                 keyboard.selectNote("C");
+                updateKeyboardColors();
             }
         }
         
@@ -127,15 +131,29 @@ function ensureUIReady() {
     }, 500); // 500ms delay to ensure everything is loaded
 }
 
+// Function to update keyboard colors
+function updateKeyboardColors() {
+    if (keyboard && typeof keyboard.selectNote === 'function') {
+        // Force reselection of the current note to apply the new colors
+        keyboard.selectNote(currentRoot);
+    }
+}
+
 // Initialize the SVG Piano Keyboard
 function initializeKeyboard() {
     try {
         console.log("Initializing keyboard...");
-        // Create a new SVGKeyboard instance
+        // Create a new SVGKeyboard instance with red colors for selected keys
+        // Using the same darker red for both white and black keys
         keyboard = new SVGKeyboard('piano-container', {
             initialSelectedNote: currentRoot,
-            onNoteSelected: selectRootNote
+            onNoteSelected: selectRootNote,
+            selectedWhiteKeyColor: '#d32f2f', // Same darker red for selected white keys
+            selectedBlackKeyColor: '#d32f2f'  // Darker red for selected black keys
         });
+        
+        // Ensure colors are applied
+        setTimeout(updateKeyboardColors, 50);
         
         // Manually trigger initial chord and voicing generation
         // This is needed because the onNoteSelected callback might not fire on initialization

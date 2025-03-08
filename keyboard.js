@@ -110,6 +110,12 @@ class SVGKeyboard {
             text.style.textAnchor = "middle";
             text.style.userSelect = "none";
             text.style.pointerEvents = "none";
+            // Set text color to white if the key is selected and using a dark color
+            if (key.note === this.selectedNote && this.options.selectedWhiteKeyColor === '#d32f2f') {
+                text.setAttribute("fill", "white");
+            } else {
+                text.setAttribute("fill", "black");
+            }
             text.textContent = key.note;
             this.svg.appendChild(text);
         });
@@ -172,11 +178,31 @@ class SVGKeyboard {
                 key.style.fill = isWhiteKey 
                     ? this.options.selectedWhiteKeyColor 
                     : this.options.selectedBlackKeyColor;
+                
+                // Find and update the corresponding text color
+                if (isWhiteKey && this.options.selectedWhiteKeyColor === '#d32f2f') {
+                    const keyTexts = this.svg.querySelectorAll('.key-text');
+                    keyTexts.forEach(text => {
+                        if (text.textContent === keyNote) {
+                            text.setAttribute("fill", "white");
+                        }
+                    });
+                }
             } else {
                 key.classList.remove('selected');
                 key.style.fill = isWhiteKey 
                     ? this.options.whiteKeyColor 
                     : this.options.blackKeyColor;
+                
+                // Reset text color for white keys
+                if (isWhiteKey) {
+                    const keyTexts = this.svg.querySelectorAll('.key-text');
+                    keyTexts.forEach(text => {
+                        if (text.textContent === keyNote) {
+                            text.setAttribute("fill", "black");
+                        }
+                    });
+                }
             }
         });
         
