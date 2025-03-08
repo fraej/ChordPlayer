@@ -6,6 +6,7 @@ let currentRoot = "C"; // Default root note
 let statusMessage;
 let currentRootDisplay;
 let keyboard; // SVG Keyboard instance
+let initialLoadComplete = false; // Flag to track initial load
 
 // Wait for the window to fully load before initializing
 window.onload = function() {
@@ -25,14 +26,72 @@ window.onload = function() {
     // Initialize audio on page load
     loadPiano();
     
-    console.log("Generating initial chords and voicings...");
-    // Generate chord buttons for default C root immediately
-    generateChords();
+    // Force initial chord and voicing generation
+    forceInitialGeneration();
+};
+
+// Function to force initial chord and voicing generation
+function forceInitialGeneration() {
+    // Set a flag to prevent multiple initializations
+    if (initialLoadComplete) return;
     
-    // Show default voicings for C major chord immediately
+    console.log("Forcing initial chord and voicing generation...");
+    
+    // Set the current root explicitly
+    currentRoot = "C";
+    if (currentRootDisplay) {
+        currentRootDisplay.textContent = `Root: C`;
+    }
+    
+    // Generate chords directly
+    const chordButtonsContainer = document.getElementById('chordButtons');
+    if (chordButtonsContainer) {
+        generateChords();
+    }
+    
+    // Generate voicings directly
+    const voicingsContainer = document.getElementById('voicingButtons');
+    if (voicingsContainer) {
+        showVoicings("C", "M", document.getElementById('octave').value);
+    }
+    
+    // Try again after a delay if needed
+    setTimeout(function() {
+        // Check if chords and voicings are populated
+        const hasChords = chordButtonsContainer && chordButtonsContainer.children.length > 0;
+        const hasVoicings = voicingsContainer && voicingsContainer.children.length > 0;
+        
+        if (!hasChords || !hasVoicings) {
+            console.log("Retrying chord and voicing generation...");
+            
+            // Clear and regenerate
+            if (chordButtonsContainer) chordButtonsContainer.innerHTML = '';
+            if (voicingsContainer) voicingsContainer.innerHTML = '';
+            
+            // Regenerate
+            generateChords();
+            showVoicings("C", "M", document.getElementById('octave').value);
+            
+            // Update keyboard selection if available
+            if (keyboard && typeof keyboard.selectNote === 'function') {
+                keyboard.selectNote("C");
+            }
+        }
+        
+        // Mark initialization as complete
+        initialLoadComplete = true;
+    }, 500);
+}
+
+// Function to ensure UI is ready and generate initial chords and voicings
+function ensureUIReady() {
+    console.log("Ensuring UI is ready and generating initial chords and voicings...");
+    
+    // First attempt at generating chords and voicings
+    generateChords();
     showVoicings("C", "M", document.getElementById('octave').value);
     
-    // Simple function to force chord and voicing generation after a short delay
+    // Force regeneration after a short delay to ensure everything is loaded
     setTimeout(function() {
         console.log("Forcing chord and voicing generation...");
         try {
@@ -40,45 +99,78 @@ window.onload = function() {
             currentRoot = "C";
             document.getElementById('current-root').textContent = `Root: C`;
             
-            // Update keyboard selected note
-            keyboard.selectNote("C");
+            // Update keyboard selected note if keyboard is initialized
+            if (keyboard && typeof keyboard.selectNote === 'function') {
+                keyboard.selectNote("C");
+            }
             
             // Clear and regenerate chord buttons
             const chordButtonsContainer = document.getElementById('chordButtons');
-            chordButtonsContainer.innerHTML = '';
-            generateChords();
+            if (chordButtonsContainer) {
+                chordButtonsContainer.innerHTML = '';
+                generateChords();
+            }
             
             // Clear and regenerate voicing buttons
             const voicingsContainer = document.getElementById('voicingButtons');
-            voicingsContainer.innerHTML = '';
-            showVoicings("C", "M", document.getElementById('octave').value);
+            if (voicingsContainer) {
+                voicingsContainer.innerHTML = '';
+                showVoicings("C", "M", document.getElementById('octave').value);
+            }
             
             console.log("Chord and voicing generation completed");
         } catch (error) {
             console.error("Error during forced chord generation:", error);
+            // Try again after a longer delay if there was an error
+            setTimeout(forceInitialGeneration, 1000);
         }
     }, 500); // 500ms delay to ensure everything is loaded
-};
+}
 
 // Initialize the SVG Piano Keyboard
 function initializeKeyboard() {
-    // Create a new SVGKeyboard instance
-    keyboard = new SVGKeyboard('piano-container', {
-        initialSelectedNote: currentRoot,
-        onNoteSelected: selectRootNote
-    });
+    try {
+        console.log("Initializing keyboard...");
+        // Create a new SVGKeyboard instance
+        keyboard = new SVGKeyboard('piano-container', {
+            initialSelectedNote: currentRoot,
+            onNoteSelected: selectRootNote
+        });
+        
+        // Manually trigger initial chord and voicing generation
+        // This is needed because the onNoteSelected callback might not fire on initialization
+        setTimeout(() => {
+            console.log("Manually triggering initial chord and voicing generation from keyboard init");
+            forceInitialGeneration();
+        }, 100);
+    } catch (error) {
+        console.error("Error initializing keyboard:", error);
+        // If keyboard initialization fails, still try to generate chords and voicings
+        setTimeout(forceInitialGeneration, 200);
+    }
 }
 
 // Function to handle root note selection
 function selectRootNote(note) {
+    console.log("Root note selected:", note);
     currentRoot = note;
-    currentRootDisplay.textContent = `Root: ${note}`;
+    
+    // Update the root note display
+    if (currentRootDisplay) {
+        currentRootDisplay.textContent = `Root: ${note}`;
+    }
     
     // Generate chords for the new root note
-    generateChords();
+    const chordButtonsContainer = document.getElementById('chordButtons');
+    if (chordButtonsContainer) {
+        generateChords();
+    }
     
     // Show voicings for the major chord of the new root note
-    showVoicings(note, "M", document.getElementById('octave').value);
+    const voicingsContainer = document.getElementById('voicingButtons');
+    if (voicingsContainer) {
+        showVoicings(note, "M", document.getElementById('octave').value);
+    }
 }
 
 // Function to initialize audio context and load piano
@@ -191,6 +283,12 @@ function generateChords() {
     const octave = document.getElementById('octave').value;
     const rootNote = currentRoot; // Use the selected root note from piano
     const chordButtonsContainer = document.getElementById('chordButtons');
+    
+    // Safety check - if container doesn't exist, exit
+    if (!chordButtonsContainer) {
+        console.error("Chord buttons container not found");
+        return;
+    }
     
     // Clear existing chord buttons
     chordButtonsContainer.innerHTML = '';
@@ -549,6 +647,13 @@ function getVoicingRange(voicing) {
 function showVoicings(rootNote, chordType, baseOctave) {
     console.log("Showing voicings for:", rootNote, chordType, baseOctave);
     const voicingsContainer = document.getElementById('voicingButtons');
+    
+    // Safety check - if container doesn't exist, exit
+    if (!voicingsContainer) {
+        console.error("Voicings container not found");
+        return;
+    }
+    
     voicingsContainer.innerHTML = '';
     
     const allVoicings = getAllVoicings(rootNote, chordType, baseOctave);
@@ -559,44 +664,77 @@ function showVoicings(rootNote, chordType, baseOctave) {
         return;
     }
 
-    // Create a grid for voicing buttons
-    const voicingGrid = document.createElement('div');
-    voicingGrid.style.display = 'grid';
-    voicingGrid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(300px, 1fr))';
-    voicingGrid.style.gap = '10px';
-    voicingsContainer.appendChild(voicingGrid);
-
-    allVoicings.forEach((voicing, index) => {
-        const button = document.createElement('button');
-        button.className = 'voicing-button';
+    // Group voicings by inversion
+    const inversionGroups = {};
+    
+    allVoicings.forEach(voicing => {
+        const inversionKey = voicing.inversionIndex;
+        if (!inversionGroups[inversionKey]) {
+            inversionGroups[inversionKey] = [];
+        }
+        inversionGroups[inversionKey].push(voicing);
+    });
+    
+    // Create a container for all inversion groups
+    Object.keys(inversionGroups).forEach(inversionKey => {
+        const inversionIndex = parseInt(inversionKey);
+        const voicings = inversionGroups[inversionKey];
         
-        // Format notes with clear spacing
-        const formattedNotes = voicing.notes.join(' ');
-        button.textContent = `${voicing.name}: ${formattedNotes} (${voicing.range} semitones)`;
+        // Create inversion group container
+        const groupContainer = document.createElement('div');
+        groupContainer.className = 'inversion-group';
         
-        button.onclick = () => {
-            // Check if audio is ready
-            if (!isLoaded) {
-                showStatus('Please wait for the piano to load...', 'loading');
-                return;
-            }
+        // Create inversion title
+        const inversionTitle = document.createElement('div');
+        inversionTitle.className = 'inversion-title';
+        inversionTitle.textContent = `Inversion ${inversionIndex + 1}`;
+        groupContainer.appendChild(inversionTitle);
+        
+        // Create grid for this inversion group
+        const voicingGrid = document.createElement('div');
+        voicingGrid.className = 'voicing-grid';
+        groupContainer.appendChild(voicingGrid);
+        
+        // Add voicing buttons to this grid
+        voicings.forEach(voicing => {
+            const button = document.createElement('button');
+            button.className = 'voicing-button';
             
-            // Ensure audio context is started if not already
-            if (!audioContextStarted) {
-                initializeAudio();
-            }
+            // Format notes with clear spacing
+            const formattedNotes = voicing.notes.join(' ');
             
-            // Ensure audio context is running
-            if (Tone.context.state !== "running") {
-                Tone.context.resume();
-            }
+            // Show voicing type if available
+            const typeText = voicing.type ? ` (${voicing.type})` : '';
+            button.textContent = `${formattedNotes}${typeText} - Range: ${voicing.range} semitones`;
             
-            // Stop any playing notes
-            piano.releaseAll();
+            button.onclick = () => {
+                // Check if audio is ready
+                if (!isLoaded) {
+                    showStatus('Please wait for the piano to load...', 'loading');
+                    return;
+                }
+                
+                // Ensure audio context is started if not already
+                if (!audioContextStarted) {
+                    initializeAudio();
+                }
+                
+                // Ensure audio context is running
+                if (Tone.context.state !== "running") {
+                    Tone.context.resume();
+                }
+                
+                // Stop any playing notes
+                piano.releaseAll();
+                
+                // Play the voicing
+                piano.triggerAttackRelease(voicing.notes, "2n");
+            };
             
-            // Play the voicing
-            piano.triggerAttackRelease(voicing.notes, "2n");
-        };
-        voicingGrid.appendChild(button);
+            voicingGrid.appendChild(button);
+        });
+        
+        // Add this inversion group to the main container
+        voicingsContainer.appendChild(groupContainer);
     });
 } 
