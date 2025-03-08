@@ -61,6 +61,35 @@ button:hover {
 .section {
     margin-bottom: 20px;
 }
+
+/* Chord section styling */
+.chord-section {
+    background-color: #e3f2fd;
+    border-radius: 6px;
+    padding: 15px;
+    border-left: 4px solid #2196f3;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+.chord-section h2 {
+    color: #1565c0;
+}
+
+/* Voicing section styling */
+.voicing-section {
+    background-color: #e8f5e9;
+    border-radius: 6px;
+    padding: 15px;
+    border-left: 4px solid #4caf50;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+.voicing-section h2 {
+    color: #2e7d32;
+}
+
 h2 {
     color: #333;
     margin-bottom: 15px;
