@@ -6,7 +6,9 @@ let currentRoot = "C"; // Default root note
 let statusMessage;
 let currentRootDisplay;
 let keyboard; // SVG Keyboard instance
+let fixedKeyboard; // Fixed SVG Keyboard instance at the bottom
 let initialLoadComplete = false; // Flag to track initial load
+let currentlyPlayingNotes = []; // Track which notes are currently playing
 
 // Wait for the window to fully load before initializing
 window.onload = function() {
@@ -16,6 +18,9 @@ window.onload = function() {
     
     // Initialize the SVG Piano Keyboard using our library
     initializeKeyboard();
+    
+    // Initialize the fixed keyboard at the bottom
+    initializeFixedKeyboard();
     
     // Add event listener to octave selector
     document.getElementById('octave').addEventListener('change', function() {
@@ -29,6 +34,356 @@ window.onload = function() {
     // Force initial chord and voicing generation
     forceInitialGeneration();
 };
+
+// Function to initialize the fixed keyboard at the bottom
+function initializeFixedKeyboard() {
+    try {
+        console.log("Initializing fixed keyboard...");
+        
+        // Create a custom full 88-key keyboard
+        const fixedPianoContainer = document.getElementById('fixed-piano');
+        
+        // Clear any existing content
+        if (fixedPianoContainer) {
+            fixedPianoContainer.innerHTML = '';
+            
+            // Get the container width
+            const containerWidth = window.innerWidth;
+            
+            // Calculate key width based on container width
+            // We need to fit 52 white keys (88 keys total, but 52 white keys)
+            const whiteKeyWidth = Math.max(20, Math.floor(containerWidth / 52));
+            
+            // Create SVG element - make it span the full width
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("class", "piano-svg");
+            
+            // Calculate the total SVG width based on the number of white keys
+            const totalWidth = whiteKeyWidth * 52;
+            svg.setAttribute("viewBox", `0 0 ${totalWidth} 120`);
+            svg.style.width = "100%";
+            svg.style.height = "100%";
+            fixedPianoContainer.appendChild(svg);
+            
+            // Define all 88 keys (A0 to C8)
+            const allNotes = [];
+            
+            // Add all white keys first (A, B, C, D, E, F, G)
+            const whiteKeyHeight = 120;
+            let whiteKeyX = 0;
+            
+            // Start with A0, B0
+            allNotes.push({ note: 'A0', isWhite: true, x: whiteKeyX });
+            whiteKeyX += whiteKeyWidth;
+            allNotes.push({ note: 'B0', isWhite: true, x: whiteKeyX });
+            whiteKeyX += whiteKeyWidth;
+            
+            // Add C1 through B7
+            for (let octave = 1; octave <= 7; octave++) {
+                const whiteKeys = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+                whiteKeys.forEach(note => {
+                    allNotes.push({ note: `${note}${octave}`, isWhite: true, x: whiteKeyX });
+                    whiteKeyX += whiteKeyWidth;
+                });
+            }
+            
+            // Add C8
+            allNotes.push({ note: 'C8', isWhite: true, x: whiteKeyX });
+            
+            // Now add all black keys
+            // A0 has a black key (A#0)
+            allNotes.push({ note: 'A#0', isWhite: false, x: whiteKeyWidth * 0.7 });
+            
+            // Add black keys for C1 through B7
+            for (let octave = 1; octave <= 7; octave++) {
+                // C# and D#
+                allNotes.push({ note: `C#${octave}`, isWhite: false, x: (whiteKeyWidth * 2) + (octave - 1) * 7 * whiteKeyWidth + whiteKeyWidth * 0.7 });
+                allNotes.push({ note: `D#${octave}`, isWhite: false, x: (whiteKeyWidth * 3) + (octave - 1) * 7 * whiteKeyWidth + whiteKeyWidth * 0.7 });
+                
+                // F#, G#, and A#
+                allNotes.push({ note: `F#${octave}`, isWhite: false, x: (whiteKeyWidth * 5) + (octave - 1) * 7 * whiteKeyWidth + whiteKeyWidth * 0.7 });
+                allNotes.push({ note: `G#${octave}`, isWhite: false, x: (whiteKeyWidth * 6) + (octave - 1) * 7 * whiteKeyWidth + whiteKeyWidth * 0.7 });
+                allNotes.push({ note: `A#${octave}`, isWhite: false, x: (whiteKeyWidth * 7) + (octave - 1) * 7 * whiteKeyWidth + whiteKeyWidth * 0.7 });
+            }
+            
+            // Draw all white keys first (so they're behind black keys)
+            allNotes.filter(key => key.isWhite).forEach(key => {
+                const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                rect.setAttribute("class", "white-key");
+                rect.setAttribute("x", key.x);
+                rect.setAttribute("y", 0);
+                rect.setAttribute("width", whiteKeyWidth);
+                rect.setAttribute("height", whiteKeyHeight);
+                rect.setAttribute("rx", 2);
+                rect.setAttribute("data-note", key.note);
+                rect.style.fill = "white";
+                rect.style.stroke = "#ccc";
+                rect.style.strokeWidth = "1";
+                svg.appendChild(rect);
+                
+                // Add octave number at the bottom of each C key
+                if (key.note.startsWith('C')) {
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute("x", key.x + whiteKeyWidth / 2);
+                    text.setAttribute("y", whiteKeyHeight - 5);
+                    text.setAttribute("text-anchor", "middle");
+                    text.setAttribute("font-size", "8");
+                    text.textContent = key.note.slice(-1); // Get the octave number
+                    svg.appendChild(text);
+                }
+                
+                // Add note name at the bottom of each key
+                const noteText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                noteText.setAttribute("x", key.x + whiteKeyWidth / 2);
+                noteText.setAttribute("y", whiteKeyHeight - 15);
+                noteText.setAttribute("text-anchor", "middle");
+                noteText.setAttribute("font-size", "8");
+                noteText.textContent = key.note.slice(0, -1); // Get the note name without octave
+                svg.appendChild(noteText);
+            });
+            
+            // Then draw all black keys on top
+            allNotes.filter(key => !key.isWhite).forEach(key => {
+                const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                rect.setAttribute("class", "black-key");
+                rect.setAttribute("x", key.x);
+                rect.setAttribute("y", 0);
+                rect.setAttribute("width", whiteKeyWidth * 0.6);
+                rect.setAttribute("height", whiteKeyHeight * 0.65);
+                rect.setAttribute("rx", 2);
+                rect.setAttribute("data-note", key.note);
+                rect.style.fill = "#333";
+                rect.style.stroke = "#333";
+                rect.style.strokeWidth = "1";
+                svg.appendChild(rect);
+            });
+            
+            // Store the SVG and all notes for later use
+            fixedKeyboard = { 
+                svg,
+                allNotes
+            };
+            
+            // Add window resize handler to adjust keyboard size
+            window.addEventListener('resize', function() {
+                // Recalculate key width based on new container width
+                const newContainerWidth = window.innerWidth;
+                const newWhiteKeyWidth = Math.max(20, Math.floor(newContainerWidth / 52));
+                
+                // Update the viewBox
+                const newTotalWidth = newWhiteKeyWidth * 52;
+                svg.setAttribute("viewBox", `0 0 ${newTotalWidth} 120`);
+            });
+        }
+    } catch (error) {
+        console.error("Error initializing fixed keyboard:", error);
+    }
+}
+
+// Function to update the fixed keyboard to show which notes are being played
+function updateFixedKeyboard(notes) {
+    if (!fixedKeyboard || !fixedKeyboard.svg) return;
+    
+    // Clear all active keys first
+    clearActiveKeys();
+    
+    // Store the currently playing notes
+    currentlyPlayingNotes = notes;
+    
+    console.log("Highlighting notes:", notes);
+    
+    // Highlight the active keys
+    notes.forEach(note => {
+        // Make sure we have a valid note format with octave
+        if (!note.match(/^[A-G][#b]?\d+$/)) {
+            console.warn(`Invalid note format: ${note}`);
+            return;
+        }
+        
+        // Find the key with this exact note (including octave)
+        let key = fixedKeyboard.svg.querySelector(`rect[data-note="${note}"]`);
+        
+        // If the exact note isn't found, try to find it with enharmonic equivalents
+        if (!key) {
+            // Try to find enharmonic equivalents (e.g., C# = Db)
+            const enharmonics = getEnharmonicEquivalents(note);
+            for (const enharmonic of enharmonics) {
+                key = fixedKeyboard.svg.querySelector(`rect[data-note="${enharmonic}"]`);
+                if (key) {
+                    console.log(`Found enharmonic equivalent for ${note}: ${enharmonic}`);
+                    break;
+                }
+            }
+        }
+        
+        if (key) {
+            const isBlackKey = key.classList.contains('black-key');
+            
+            // Add active class
+            key.classList.add('active-key');
+            if (isBlackKey) {
+                key.classList.add('active-black-key');
+            }
+            
+            // Update the fill color
+            key.style.fill = isBlackKey ? '#66bb6a' : '#4caf50';
+            key.style.stroke = '#2e7d32';
+            key.style.strokeWidth = '2px';
+        } else {
+            console.warn(`Could not find key for note: ${note}`);
+            
+            // Try to find the note without the octave
+            const noteName = note.replace(/\d+$/, '');
+            const octave = note.match(/\d+$/)[0];
+            console.log(`Trying to find key for note ${noteName} in octave ${octave}`);
+            
+            // Try to find a key with this note name in any octave
+            const keys = fixedKeyboard.svg.querySelectorAll(`rect[data-note^="${noteName}"]`);
+            if (keys.length > 0) {
+                console.log(`Found ${keys.length} keys for note ${noteName} in different octaves`);
+                
+                // Find the key with the closest octave
+                let closestKey = null;
+                let minOctaveDiff = Infinity;
+                
+                keys.forEach(k => {
+                    const keyOctave = k.getAttribute('data-note').match(/\d+$/)[0];
+                    const octaveDiff = Math.abs(parseInt(keyOctave) - parseInt(octave));
+                    
+                    if (octaveDiff < minOctaveDiff) {
+                        minOctaveDiff = octaveDiff;
+                        closestKey = k;
+                    }
+                });
+                
+                if (closestKey) {
+                    console.log(`Using key for note ${closestKey.getAttribute('data-note')} as fallback`);
+                    
+                    const isBlackKey = closestKey.classList.contains('black-key');
+                    
+                    // Add active class
+                    closestKey.classList.add('active-key');
+                    if (isBlackKey) {
+                        closestKey.classList.add('active-black-key');
+                    }
+                    
+                    // Update the fill color
+                    closestKey.style.fill = isBlackKey ? '#66bb6a' : '#4caf50';
+                    closestKey.style.stroke = '#2e7d32';
+                    closestKey.style.strokeWidth = '2px';
+                }
+            }
+        }
+    });
+    
+    // Scroll to the middle of the active keys if there are any
+    if (notes.length > 0) {
+        scrollToActiveKeys();
+    }
+}
+
+// Function to get enharmonic equivalents of a note
+function getEnharmonicEquivalents(note) {
+    // Extract note name and octave
+    const match = note.match(/([A-G][#b]?)(\d+)/);
+    if (!match) return [note];
+    
+    const noteName = match[1];
+    const octave = match[2];
+    
+    // Common enharmonic equivalents
+    const enharmonicMap = {
+        'C#': 'Db',
+        'Db': 'C#',
+        'D#': 'Eb',
+        'Eb': 'D#',
+        'F#': 'Gb',
+        'Gb': 'F#',
+        'G#': 'Ab',
+        'Ab': 'G#',
+        'A#': 'Bb',
+        'Bb': 'A#',
+        // Special cases for B/C and E/F
+        'B': ['C', (parseInt(octave) - 1).toString()],
+        'C': ['B', (parseInt(octave) + 1).toString()],
+        'E': ['F', (parseInt(octave) - 1).toString()],
+        'F': ['E', (parseInt(octave) + 1).toString()]
+    };
+    
+    const result = [note]; // Always include the original note
+    
+    if (enharmonicMap[noteName]) {
+        if (Array.isArray(enharmonicMap[noteName])) {
+            // Handle special cases for B/C and E/F
+            const [enhName, enhOctave] = enharmonicMap[noteName];
+            result.push(`${enhName}${enhOctave}`);
+        } else {
+            // Handle regular enharmonic equivalents
+            result.push(`${enharmonicMap[noteName]}${octave}`);
+        }
+    }
+    
+    return result;
+}
+
+// Function to scroll to the active keys
+function scrollToActiveKeys() {
+    const fixedPianoContainer = document.getElementById('fixed-piano');
+    if (!fixedPianoContainer || !currentlyPlayingNotes.length) return;
+    
+    // Find all active keys
+    const activeKeys = fixedKeyboard.svg.querySelectorAll('.active-key');
+    if (!activeKeys.length) return;
+    
+    // Calculate the average x position of all active keys
+    let totalX = 0;
+    activeKeys.forEach(key => {
+        totalX += parseFloat(key.getAttribute('x'));
+    });
+    
+    const averageX = totalX / activeKeys.length;
+    
+    // Calculate the center position
+    const containerWidth = fixedPianoContainer.clientWidth;
+    const scrollPosition = Math.max(0, averageX - containerWidth / 2);
+    
+    // Scroll to the position with smooth animation
+    fixedPianoContainer.scrollTo({
+        left: scrollPosition,
+        behavior: 'smooth'
+    });
+}
+
+// Function to clear all active keys
+function clearActiveKeys() {
+    if (!fixedKeyboard || !fixedKeyboard.svg) return;
+    
+    // Reset all white keys to their default state
+    fixedKeyboard.svg.querySelectorAll('.white-key').forEach(key => {
+        // Remove active classes
+        key.classList.remove('active-key');
+        
+        // Reset fill color
+        key.style.fill = 'white';
+        key.style.stroke = '#ccc';
+        key.style.strokeWidth = '1px';
+    });
+    
+    // Reset all black keys to their default state
+    fixedKeyboard.svg.querySelectorAll('.black-key').forEach(key => {
+        // Remove active classes
+        key.classList.remove('active-key');
+        key.classList.remove('active-black-key');
+        
+        // Reset fill color
+        key.style.fill = '#333';
+        key.style.stroke = '#333';
+        key.style.strokeWidth = '1px';
+    });
+    
+    // Clear the currently playing notes array
+    currentlyPlayingNotes = [];
+}
 
 // Function to force initial chord and voicing generation
 function forceInitialGeneration() {
@@ -215,36 +570,36 @@ function loadPiano() {
     piano = new Tone.Sampler({
         urls: {
             // Full piano range
-            "A0": "A0.mp3",
-            "C1": "C1.mp3",
-            "D#1": "Ds1.mp3",
-            "F#1": "Fs1.mp3",
-            "A1": "A1.mp3",
-            "C2": "C2.mp3",
-            "D#2": "Ds2.mp3",
-            "F#2": "Fs2.mp3",
-            "A2": "A2.mp3",
-            "C3": "C3.mp3",
-            "D#3": "Ds3.mp3",
-            "F#3": "Fs3.mp3",
-            "A3": "A3.mp3",
-            "C4": "C4.mp3",
-            "D#4": "Ds4.mp3",
-            "F#4": "Fs4.mp3",
-            "A4": "A4.mp3",
-            "C5": "C5.mp3",
-            "D#5": "Ds5.mp3",
-            "F#5": "Fs5.mp3",
-            "A5": "A5.mp3",
-            "C6": "C6.mp3",
-            "D#6": "Ds6.mp3",
-            "F#6": "Fs6.mp3",
-            "A6": "A6.mp3",
-            "C7": "C7.mp3",
-            "D#7": "Ds7.mp3",
-            "F#7": "Fs7.mp3",
-            "A7": "A7.mp3",
-            "C8": "C8.mp3"
+            "A0": "A0.ogg",
+            "C1": "C1.ogg",
+            "D#1": "Ds1.ogg",
+            "F#1": "Fs1.ogg",
+            "A1": "A1.ogg",
+            "C2": "C2.ogg",
+            "D#2": "Ds2.ogg",
+            "F#2": "Fs2.ogg",
+            "A2": "A2.ogg",
+            "C3": "C3.ogg",
+            "D#3": "Ds3.ogg",
+            "F#3": "Fs3.ogg",
+            "A3": "A3.ogg",
+            "C4": "C4.ogg",
+            "D#4": "Ds4.ogg",
+            "F#4": "Fs4.ogg",
+            "A4": "A4.ogg",
+            "C5": "C5.ogg",
+            "D#5": "Ds5.ogg",
+            "F#5": "Fs5.ogg",
+            "A5": "A5.ogg",
+            "C6": "C6.ogg",
+            "D#6": "Ds6.ogg",
+            "F#6": "Fs6.ogg",
+            "A6": "A6.ogg",
+            "C7": "C7.ogg",
+            "D#7": "Ds7.ogg",
+            "F#7": "Fs7.ogg",
+            "A7": "A7.ogg",
+            "C8": "C8.ogg"
         },
         release: 1,
         baseUrl: "https://tonejs.github.io/audio/salamander/",
@@ -286,38 +641,66 @@ function showStatus(message, type) {
     statusMessage.classList.add(type);
 }
 
+// Function to get available chord types
 function getAvailableChordTypes() {
-    // Get all chord types from Tonal.js
-    return Tonal.ChordType.all()
-        .sort((a, b) => a.aliases[0].localeCompare(b.aliases[0]))
-        .map(chord => ({
-            display: chord.name || chord.aliases[0], // Use full name if available
-            symbol: chord.aliases[0]  // Symbol for Tonal.js
-        }));
+    // Try to get all chord types from Tonal.js
+    try {
+        return Tonal.ChordType.all()
+            .filter(chord => chord.aliases && chord.aliases.length > 0)
+            .map(chord => ({
+                display: chord.name || chord.aliases[0], // Use full name if available
+                symbol: chord.aliases[0]  // Symbol for Tonal.js
+            }));
+    } catch (error) {
+        console.error("Error getting chord types from Tonal.js:", error);
+        
+        // Fallback to a predefined list if Tonal.js fails
+        return [
+            { symbol: 'M', display: ' Major' },
+            { symbol: 'm', display: ' Minor' },
+            { symbol: 'dim', display: ' Diminished' },
+            { symbol: 'aug', display: ' Augmented' },
+            { symbol: 'sus4', display: ' Sus4' },
+            { symbol: 'sus2', display: ' Sus2' },
+            { symbol: '7', display: ' Dominant 7' },
+            { symbol: 'm7', display: ' Minor 7' },
+            { symbol: 'maj7', display: ' Major 7' },
+            { symbol: 'dim7', display: ' Diminished 7' },
+            { symbol: 'm7b5', display: ' Half-Diminished' },
+            { symbol: '7sus4', display: ' 7sus4' },
+            { symbol: '6', display: ' Major 6' },
+            { symbol: 'm6', display: ' Minor 6' },
+            { symbol: '69', display: ' 6/9' },
+            { symbol: 'm69', display: ' Minor 6/9' },
+            { symbol: '9', display: ' Dominant 9' },
+            { symbol: 'm9', display: ' Minor 9' },
+            { symbol: 'maj9', display: ' Major 9' },
+            { symbol: '11', display: ' Dominant 11' },
+            { symbol: 'm11', display: ' Minor 11' },
+            { symbol: '13', display: ' Dominant 13' },
+            { symbol: 'm13', display: ' Minor 13' },
+            { symbol: 'maj13', display: ' Major 13' },
+            { symbol: 'add9', display: ' Add9' },
+            { symbol: 'madd9', display: ' Minor Add9' },
+            { symbol: '7b9', display: ' 7b9' },
+            { symbol: '7#9', display: ' 7#9' }
+        ];
+    }
 }
 
+// Function to generate chord buttons
 function generateChords() {
-    console.log("Generating chords for root:", currentRoot);
-    const octave = document.getElementById('octave').value;
-    const rootNote = currentRoot; // Use the selected root note from piano
     const chordButtonsContainer = document.getElementById('chordButtons');
-    
-    // Safety check - if container doesn't exist, exit
-    if (!chordButtonsContainer) {
-        console.error("Chord buttons container not found");
-        return;
-    }
-    
-    // Clear existing chord buttons
     chordButtonsContainer.innerHTML = '';
     
     // Create a grid container for the chord buttons
     const chordGrid = document.createElement('div');
     chordGrid.className = 'chord-grid';
     chordButtonsContainer.appendChild(chordGrid);
-
+    
+    // Get available chord types
     const chordTypes = getAvailableChordTypes();
-
+    
     // Define chord categories from most common to least common
     const chordCategories = [
         // Basic triads - most common
@@ -360,399 +743,536 @@ function generateChords() {
         }
     });
     
+    // Helper function to add a chord button
     function addChordButton(display, symbol) {
+        // Get the current octave
+        const octave = document.getElementById('octave').value;
+        
+        // Get the chord notes
+        const notes = getChordNotes(currentRoot, symbol, octave);
+        
+        // Create the button
         const button = document.createElement('button');
         button.className = 'chord-button';
         
-        // Get chord notes to count them
-        const chordObj = Tonal.Chord.get(`${rootNote}${symbol}`);
-        const noteCount = chordObj.notes.length;
+        // Set the button content
+        button.innerHTML = `
+            ${currentRoot}${display}
+            <span class="note-count">${notes.length} notes</span>
+        `;
         
-        // Create main chord name element
-        const nameElement = document.createElement('div');
+        // Add click event to play the chord
+        button.addEventListener('click', function() {
+            playChord(currentRoot, symbol, octave);
+            
+            // Show voicings for this chord
+            showVoicings(currentRoot, symbol, octave);
+        });
         
-        // If the text is long, add a line break before the chord type
-        if (display.length > 8) {
-            nameElement.innerHTML = `${rootNote}<br>${display}`;
-        } else {
-            nameElement.textContent = `${rootNote} ${display}`;
-        }
-        
-        // Create note count element
-        const countElement = document.createElement('div');
-        countElement.className = 'note-count';
-        countElement.textContent = `(${noteCount} notes)`;
-        
-        // Add elements to button
-        button.appendChild(nameElement);
-        button.appendChild(countElement);
-        
-        button.title = `${rootNote} ${display} - ${noteCount} notes`; // Add tooltip
-        button.onclick = () => {
-            playChord(rootNote, symbol, octave);
-            showVoicings(rootNote, symbol, octave);
-        };
+        // Add the button to the grid
         chordGrid.appendChild(button);
     }
 }
 
+// Function to get chord notes
 function getChordNotes(root, type, octave) {
-    return Tonal.Chord.get(`${root}${type}`).notes.map(note => `${note}${octave}`);
-}
-
-function playChord(root, type, octave) {
-    // Check if audio is ready
-    if (!isLoaded) {
-        showStatus('Please wait for the piano to load...', 'loading');
-        return;
-    }
-    
-    // Ensure audio context is started if not already
-    if (!audioContextStarted) {
-        initializeAudio();
-    }
-    
-    // Ensure audio context is running
-    if (Tone.context.state !== "running") {
-        Tone.context.resume();
-    }
-    
-    // Get chord notes using Tonal.js
-    const notes = getChordNotes(root, type, octave);
-    
-    // Stop any playing notes
-    piano.releaseAll();
-    
-    // Play the chord
-    piano.triggerAttackRelease(notes, "2n");
-}
-
-function getAllVoicings(rootNote, chordType, baseOctave) {
-    const chord = Tonal.Chord.get(`${rootNote}${chordType}`);
-    if (!chord || !chord.notes.length) return [];
-
-    const octave = parseInt(baseOctave);
-    const voicings = []; // Use array instead of Map
-    
-    // Helper function to sort notes by pitch (low to high)
-    function sortByPitch(notes) {
-        return [...notes].sort((a, b) => {
-            const midiA = Tonal.Note.midi(a);
-            const midiB = Tonal.Note.midi(b);
-            return midiA - midiB;
-        });
-    }
-    
-    // Helper function to check if a voicing is a duplicate - better implementation
-    function isDuplicate(newVoicing) {
-        // Sort the new voicing by pitch for comparison
-        const sortedNew = sortByPitch(newVoicing);
+    try {
+        // Get the chord notes using Tonal.js
+        const chordObj = Tonal.Chord.get(`${root}${type}`);
         
-        // Compare with existing voicings
-        return voicings.some(v => {
-            // Sort existing voicing notes by pitch
-            const sortedExisting = sortByPitch(v.notes);
+        // Check if we got valid chord notes
+        if (!chordObj || !chordObj.notes || chordObj.notes.length === 0) {
+            console.warn(`Could not get notes for chord: ${root}${type}`);
+            return [];
+        }
+        
+        // Parse the base octave
+        const baseOctave = parseInt(octave);
+        
+        // Get the root note with octave
+        const rootWithOctave = `${root}${baseOctave}`;
+        const rootMidi = Tonal.Note.midi(rootWithOctave);
+        
+        if (rootMidi === null) {
+            console.warn(`Invalid root note: ${rootWithOctave}`);
+            return [];
+        }
+        
+        // Log the chord notes
+        console.log(`Chord notes for ${root}${type}:`, chordObj.notes);
+        
+        // Map the notes to the appropriate octaves
+        const result = [];
+        let previousMidi = null;
+        
+        chordObj.notes.forEach(note => {
+            // Get the note without octave
+            const noteName = note.replace(/\d+$/, '');
             
-            // If different number of notes, not a duplicate
-            if (sortedExisting.length !== sortedNew.length) {
-                return false;
+            // Start with the note in the base octave
+            let currentOctave = baseOctave;
+            let noteWithOctave = `${noteName}${currentOctave}`;
+            let noteMidi = Tonal.Note.midi(noteWithOctave);
+            
+            if (noteMidi === null) {
+                console.warn(`Invalid note: ${noteWithOctave}`);
+                return; // Skip this note
             }
             
-            // Compare each note
-            for (let i = 0; i < sortedNew.length; i++) {
-                if (sortedExisting[i] !== sortedNew[i]) {
+            // For extended chords, we need to ensure notes are in the right octave
+            // If this note is lower than the previous note, move it up an octave
+            if (previousMidi !== null && noteMidi < previousMidi) {
+                currentOctave++;
+                noteWithOctave = `${noteName}${currentOctave}`;
+                noteMidi = Tonal.Note.midi(noteWithOctave);
+            }
+            
+            // If the note is lower than the root and it's not the root itself, 
+            // it might need to be in a higher octave
+            if (noteMidi < rootMidi && noteName !== root) {
+                // Try moving it up an octave
+                const higherOctave = currentOctave + 1;
+                const noteInHigherOctave = `${noteName}${higherOctave}`;
+                const higherMidi = Tonal.Note.midi(noteInHigherOctave);
+                
+                // If moving it up an octave makes it higher than the previous note,
+                // use the higher octave
+                if (previousMidi === null || higherMidi > previousMidi) {
+                    noteWithOctave = noteInHigherOctave;
+                    noteMidi = higherMidi;
+                }
+            }
+            
+            // Add the note to the result
+            result.push(noteWithOctave);
+            
+            // Update the previous MIDI value
+            previousMidi = noteMidi;
+        });
+        
+        return result;
+    } catch (error) {
+        console.error(`Error getting notes for chord ${root}${type}:`, error);
+        return [];
+    }
+}
+
+// Function to play a chord
+function playChord(root, type, octave) {
+    try {
+        // Get the chord notes
+        const notes = getChordNotes(root, type, octave);
+        
+        // Check if we have notes to play
+        if (!notes || notes.length === 0) {
+            console.warn(`No notes to play for chord: ${root}${type}`);
+            return;
+        }
+        
+        // Validate notes - ensure they all have octave information
+        const validNotes = notes.filter(note => note.match(/^[A-G][#b]?\d+$/));
+        
+        if (validNotes.length !== notes.length) {
+            console.warn(`Some notes don't have octave information:`, 
+                notes.filter(note => !note.match(/^[A-G][#b]?\d+$/)));
+        }
+        
+        // Sort notes by pitch for better visualization
+        const sortedNotes = sortNotesByPitch(validNotes);
+        
+        // Log the notes we're trying to play
+        console.log(`Attempting to play chord ${root}${type} notes:`, sortedNotes);
+        
+        // Start audio context if not already started
+        if (!audioContextStarted) {
+            initializeAudio();
+        }
+        
+        // Play the chord if piano is loaded
+        if (piano && isLoaded) {
+            // Release any currently playing notes
+            piano.releaseAll();
+            
+            // Play each note in the chord
+            sortedNotes.forEach(note => {
+                try {
+                    piano.triggerAttack(note);
+                } catch (error) {
+                    console.error(`Error playing note ${note}:`, error);
+                }
+            });
+            
+            // Update the fixed keyboard to show which notes are being played
+            updateFixedKeyboard(sortedNotes);
+            
+            console.log(`Playing chord: ${root}${type}`, sortedNotes);
+            
+            // Also show voicings for this chord
+            showVoicings(root, type, octave);
+        } else {
+            console.warn("Piano not loaded yet");
+        }
+    } catch (error) {
+        console.error(`Error playing chord ${root}${type}:`, error);
+    }
+}
+
+// Helper function to sort notes by pitch
+function sortNotesByPitch(notes) {
+    return [...notes].sort((a, b) => {
+        const midiA = Tonal.Note.midi(a);
+        const midiB = Tonal.Note.midi(b);
+        
+        if (midiA === null || midiB === null) {
+            return 0;
+        }
+        
+        return midiA - midiB;
+    });
+}
+
+// Function to get all voicings for a chord
+function getAllVoicings(rootNote, chordType, baseOctave) {
+    try {
+        // Get the chord notes using Tonal.js
+        const chordObj = Tonal.Chord.get(`${rootNote}${chordType}`);
+        
+        // Check if we got valid chord notes
+        if (!chordObj || !chordObj.notes || chordObj.notes.length === 0) {
+            console.warn(`Could not get notes for chord: ${rootNote}${chordType}`);
+            return [];
+        }
+        
+        const chordNotes = chordObj.notes;
+        console.log(`Generating voicings for ${rootNote}${chordType}:`, chordNotes);
+        
+        // Convert base octave to number
+        const octave = parseInt(baseOctave);
+        
+        // Array to store all voicings
+        const allVoicings = [];
+        
+        // Helper function to sort notes by pitch
+        function sortByPitch(notes) {
+            return [...notes].sort((a, b) => {
+                return Tonal.Note.midi(a) - Tonal.Note.midi(b);
+            });
+        }
+        
+        // Helper function to check if a voicing is a duplicate
+        function isDuplicate(newVoicing) {
+            return allVoicings.some(existingVoicing => {
+                // If note count is different, it's not a duplicate
+                if (existingVoicing.notes.length !== newVoicing.length) {
                     return false;
                 }
-            }
-            
-            return true;
-        });
-    }
-    
-    // Helper function to add a voicing
-    function addVoicing(notes, inversionIndex, type) {
-        // Make sure all notes are valid
-        if (!notes.every(note => Tonal.Note.midi(note))) {
-            return;
-        }
-        
-        // Don't add if it's a duplicate
-        if (isDuplicate(notes)) {
-            return;
-        }
-        
-        // Calculate range
-        const range = getVoicingRange(notes);
-        
-        // Create name based on inversion and type
-        let name;
-        if (type) {
-            name = `Inversion ${inversionIndex + 1} (${type})`;
-        } else {
-            name = `Inversion ${inversionIndex + 1}`;
-        }
-        
-        // Add to voicings array - always sort notes by pitch for consistency
-        voicings.push({
-            notes: sortByPitch(notes),  // Sort notes by pitch
-            inversionIndex,
-            type,
-            name,
-            range
-        });
-    }
-    
-    // Get all inversions
-    const chordNotes = chord.notes;
-    
-    // For each inversion
-    for (let invIndex = 0; invIndex < chordNotes.length; invIndex++) {
-        // Create the inversion with the correct bass note
-        let inversion = [...chordNotes];
-        for (let j = 0; j < invIndex; j++) {
-            inversion.push(inversion.shift());
-        }
-        
-        // 1. Basic inversion - start with bass note, then add other notes in order
-        const basicInversion = [];
-        // First note (bass) in the current octave
-        basicInversion.push(`${inversion[0]}${octave}`);
-        
-        // Find the best octave for remaining notes so they're higher than the bass
-        let currOctave = octave;
-        for (let i = 1; i < inversion.length; i++) {
-            // Try current octave first
-            let nextNote = `${inversion[i]}${currOctave}`;
-            let nextMidi = Tonal.Note.midi(nextNote);
-            let bassMidi = Tonal.Note.midi(basicInversion[0]);
-            
-            // If this note is lower than the bass note, move it up an octave
-            if (nextMidi < bassMidi) {
-                nextNote = `${inversion[i]}${currOctave + 1}`;
-            }
-            
-            basicInversion.push(nextNote);
-        }
-        
-        // Add the basic inversion (sorted by pitch)
-        addVoicing(sortByPitch(basicInversion), invIndex, null);
-        
-        // 2. Close position - keep notes as close as possible
-        const closePos = [];
-        currOctave = octave;
-        
-        // Start with the bass note
-        closePos.push(`${inversion[0]}${currOctave}`);
-        
-        for (let i = 1; i < inversion.length; i++) {
-            const prevMidi = Tonal.Note.midi(closePos[i-1]);
-            let currMidi = Tonal.Note.midi(`${inversion[i]}${currOctave}`);
-            
-            if (currMidi < prevMidi) {
-                currOctave++;
-                closePos.push(`${inversion[i]}${currOctave}`);
-            } else {
-                closePos.push(`${inversion[i]}${currOctave}`);
-            }
-        }
-        
-        // Only add close position if it's not a duplicate
-        if (!isDuplicate(closePos)) {
-            addVoicing(closePos, invIndex, "Close");
-        }
-        
-        // 3. Standard piano voicings - G3-C4-E4 for C major second inversion, etc.
-        // These are common practical voicings that pianists use
-        if (inversion.length >= 3) {
-            // Standard voicing with lower octave for bass note
-            const standardVoicing = [
-                `${inversion[0]}${octave - 1}`, // Bass note one octave lower
-            ];
-            
-            // Upper notes in normal octave
-            for (let i = 1; i < inversion.length; i++) {
-                standardVoicing.push(`${inversion[i]}${octave}`);
-            }
-            
-            addVoicing(standardVoicing, invIndex, "Piano");
-            
-            // If we're dealing with a second inversion triad (like G-C-E for C major)
-            // Add the specific G3-C4-E4 voicing that pianists commonly use
-            if (invIndex === 2 && inversion.length === 3) {
-                const lowerOctaveVoicing = [
-                    `${inversion[0]}${octave - 1}`, // Bass note one octave lower (G3 for C major)
-                    `${inversion[1]}${octave}`,     // Middle note in normal octave (C4 for C major)
-                    `${inversion[2]}${octave}`      // Top note in normal octave (E4 for C major)
-                ];
                 
-                addVoicing(lowerOctaveVoicing, invIndex, "Standard");
-            }
+                // Check if all notes match
+                return existingVoicing.notes.every((note, index) => {
+                    return Tonal.Note.midi(note) === Tonal.Note.midi(newVoicing[index]);
+                });
+            });
         }
         
-        // 4. Spread voicing - spread notes across octaves
-        if (inversion.length >= 3) {
-            const spreadVoicing = [
-                `${inversion[0]}${octave}`, // Bass note in base octave
-            ];
+        // Helper function to add a voicing to the result array
+        function addVoicing(notes, inversionIndex, type) {
+            // Make sure all notes are valid
+            const validNotes = notes.filter(note => {
+                try {
+                    return Tonal.Note.midi(note) !== null;
+                } catch (error) {
+                    console.warn(`Invalid note in voicing: ${note}`);
+                    return false;
+                }
+            });
             
-            // Spread the remaining notes
-            for (let i = 1; i < inversion.length; i++) {
-                // Alternate between current octave + 1 and current octave + 2
-                const noteOctave = octave + (i % 2) + 1;
-                spreadVoicing.push(`${inversion[i]}${noteOctave}`);
+            // Skip if we lost notes in validation
+            if (validNotes.length !== notes.length) {
+                console.warn(`Skipping voicing due to invalid notes: ${notes.join(', ')}`);
+                return;
             }
             
-            // Add spread voicing (will be sorted by pitch automatically)
-            addVoicing(spreadVoicing, invIndex, "Spread");
+            // Sort notes by pitch
+            const sortedNotes = sortByPitch(validNotes);
             
-            // 5. Open voicing for triads
-            if (inversion.length === 3) {
-                const openVoicing = [
-                    `${inversion[0]}${octave}`,     // Bass note
-                    `${inversion[1]}${octave + 1}`, // Middle note up an octave
-                    `${inversion[2]}${octave + 1}`  // Top note up an octave
-                ];
-                addVoicing(openVoicing, invIndex, "Open");
+            // Skip if it's a duplicate
+            if (isDuplicate(sortedNotes)) {
+                return;
             }
             
-            // 6. Drop 2 voicing for 4+ note chords
-            if (inversion.length >= 4) {
-                const drop2Voicing = [];
+            // Calculate the range of the voicing in semitones
+            const range = getVoicingRange(sortedNotes);
+            
+            // Add the voicing to the result array
+            allVoicings.push({
+                notes: sortedNotes,
+                inversionIndex,
+                type,
+                range
+            });
+        }
+        
+        // Generate close position voicings
+        for (let inversionIndex = 0; inversionIndex < chordNotes.length; inversionIndex++) {
+            // Create the voicing in the specified octave
+            const voicing = chordNotes.map((note, index) => {
+                // Calculate the octave for this note
+                let noteOctave = octave;
                 
-                // Add bass note
-                drop2Voicing.push(`${inversion[0]}${octave}`);
-                
-                // Add second-from-top note an octave down
-                for (let i = 1; i < inversion.length; i++) {
-                    if (i === inversion.length - 2) {
-                        drop2Voicing.push(`${inversion[i]}${octave - 1}`);
-                    } else {
-                        drop2Voicing.push(`${inversion[i]}${octave}`);
-                    }
+                // If the index is less than the inversion index, move to the next octave
+                if (index < inversionIndex) {
+                    noteOctave += 1;
                 }
                 
-                addVoicing(drop2Voicing, invIndex, "Drop 2");
+                return `${note}${noteOctave}`;
+            });
+            
+            // Add the voicing
+            addVoicing(voicing, inversionIndex, 'close');
+        }
+        
+        // Generate open position voicings
+        // For each inversion, try different octave combinations
+        for (let inversionIndex = 0; inversionIndex < chordNotes.length; inversionIndex++) {
+            // Start with the close position voicing
+            const baseVoicing = chordNotes.map((note, index) => {
+                let noteOctave = octave;
+                if (index < inversionIndex) {
+                    noteOctave += 1;
+                }
+                return `${note}${noteOctave}`;
+            });
+            
+            // Try different octave combinations
+            // For each note (except the bass note), try moving it up an octave
+            for (let i = 1; i < baseVoicing.length; i++) {
+                // Create a copy of the base voicing
+                const openVoicing = [...baseVoicing];
+                
+                // Move this note up an octave
+                const note = openVoicing[i];
+                const noteName = note.replace(/\d+$/, '');
+                const noteOctave = parseInt(note.match(/\d+$/)[0]);
+                openVoicing[i] = `${noteName}${noteOctave + 1}`;
+                
+                // Add the voicing
+                addVoicing(openVoicing, inversionIndex, 'open');
+                
+                // Try moving additional notes up an octave
+                for (let j = i + 1; j < baseVoicing.length; j++) {
+                    // Create a copy of the current voicing
+                    const openVoicing2 = [...openVoicing];
+                    
+                    // Move this note up an octave
+                    const note2 = openVoicing2[j];
+                    const noteName2 = note2.replace(/\d+$/, '');
+                    const noteOctave2 = parseInt(note2.match(/\d+$/)[0]);
+                    openVoicing2[j] = `${noteName2}${noteOctave2 + 1}`;
+                    
+                    // Add the voicing
+                    addVoicing(openVoicing2, inversionIndex, 'open');
+                }
             }
         }
+        
+        // Sort voicings by range
+        return allVoicings.sort((a, b) => a.range - b.range);
+    } catch (error) {
+        console.error(`Error generating voicings for ${rootNote}${chordType}:`, error);
+        return [];
     }
-    
-    // Sort voicings
-    return voicings.sort((a, b) => {
-        // First sort by inversion
-        if (a.inversionIndex !== b.inversionIndex) {
-            return a.inversionIndex - b.inversionIndex;
+}
+
+// Function to get the range of a voicing in semitones
+function getVoicingRange(voicing) {
+    try {
+        if (!voicing || voicing.length < 2) {
+            return 0;
         }
         
-        // Then sort by type (null comes first)
-        if (!a.type && b.type) return -1;
-        if (a.type && !b.type) return 1;
+        const midiNotes = voicing.map(note => {
+            const midi = Tonal.Note.midi(note);
+            if (midi === null) {
+                throw new Error(`Invalid note: ${note}`);
+            }
+            return midi;
+        });
         
-        // Then sort by range (smaller range first)
-        return a.range - b.range;
-    });
-}
-
-// Helper function to calculate the range of a voicing in semitones
-function getVoicingRange(voicing) {
-    if (voicing.length <= 1) return 0;
-    
-    const midiNotes = voicing.map(note => Tonal.Note.midi(note));
-    const min = Math.min(...midiNotes);
-    const max = Math.max(...midiNotes);
-    return max - min;
-}
-
-function showVoicings(rootNote, chordType, baseOctave) {
-    console.log("Showing voicings for:", rootNote, chordType, baseOctave);
-    const voicingsContainer = document.getElementById('voicingButtons');
-    
-    // Safety check - if container doesn't exist, exit
-    if (!voicingsContainer) {
-        console.error("Voicings container not found");
-        return;
+        return Math.max(...midiNotes) - Math.min(...midiNotes);
+    } catch (error) {
+        console.error("Error calculating voicing range:", error);
+        return 0;
     }
-    
+}
+
+// Function to show voicings for a chord
+function showVoicings(rootNote, chordType, baseOctave) {
+    const voicingsContainer = document.getElementById('voicingButtons');
     voicingsContainer.innerHTML = '';
     
+    // Get all voicings for the chord
     const allVoicings = getAllVoicings(rootNote, chordType, baseOctave);
-    console.log("Generated voicings:", allVoicings.length);
     
     if (allVoicings.length === 0) {
-        voicingsContainer.innerHTML = '<p>No valid voicings found</p>';
+        console.warn(`No voicings found for ${rootNote}${chordType} in octave ${baseOctave}`);
+        voicingsContainer.innerHTML = `<div class="no-voicings">No voicings available for ${rootNote}${chordType}</div>`;
         return;
     }
-
+    
     // Group voicings by inversion
-    const inversionGroups = {};
+    const groupedVoicings = {};
     
     allVoicings.forEach(voicing => {
-        const inversionKey = voicing.inversionIndex;
-        if (!inversionGroups[inversionKey]) {
-            inversionGroups[inversionKey] = [];
+        const { notes, inversionIndex, type } = voicing;
+        
+        // Create a key for the inversion group
+        const groupKey = `${type}-${inversionIndex}`;
+        
+        if (!groupedVoicings[groupKey]) {
+            groupedVoicings[groupKey] = [];
         }
-        inversionGroups[inversionKey].push(voicing);
+        
+        groupedVoicings[groupKey].push(voicing);
     });
     
-    // Create a container for all inversion groups
-    Object.keys(inversionGroups).forEach(inversionKey => {
-        const inversionIndex = parseInt(inversionKey);
-        const voicings = inversionGroups[inversionKey];
+    // Create a section for each inversion group
+    Object.keys(groupedVoicings).sort().forEach(groupKey => {
+        const voicings = groupedVoicings[groupKey];
+        const [type, inversionIndex] = groupKey.split('-');
         
-        // Create inversion group container
+        // Create a container for this inversion group
         const groupContainer = document.createElement('div');
         groupContainer.className = 'inversion-group';
         
-        // Create inversion title
-        const inversionTitle = document.createElement('div');
-        inversionTitle.className = 'inversion-title';
-        inversionTitle.textContent = `Inversion ${inversionIndex + 1}`;
-        groupContainer.appendChild(inversionTitle);
+        // Add a title for the inversion group
+        const groupTitle = document.createElement('div');
+        groupTitle.className = 'inversion-title';
         
-        // Create grid for this inversion group
+        // Format the inversion name
+        let inversionName = '';
+        if (type === 'close') {
+            inversionName = `Close Position - ${getInversionName(parseInt(inversionIndex))}`;
+        } else {
+            inversionName = `Open Position - ${getInversionName(parseInt(inversionIndex))}`;
+        }
+        
+        groupTitle.textContent = inversionName;
+        groupContainer.appendChild(groupTitle);
+        
+        // Create a grid for the voicings
         const voicingGrid = document.createElement('div');
         voicingGrid.className = 'voicing-grid';
-        groupContainer.appendChild(voicingGrid);
         
-        // Add voicing buttons to this grid
+        // Add buttons for each voicing in this group
         voicings.forEach(voicing => {
+            const { notes, range } = voicing;
+            
+            // Validate notes - ensure they all have octave information
+            const validNotes = notes.filter(note => note.match(/^[A-G][#b]?\d+$/));
+            
+            if (validNotes.length !== notes.length) {
+                console.warn(`Skipping voicing with invalid notes: ${notes.join(', ')}`);
+                return;
+            }
+            
+            // Create button for this voicing
             const button = document.createElement('button');
             button.className = 'voicing-button';
             
-            // Format notes with clear spacing
-            const formattedNotes = voicing.notes.join(' ');
+            // Format notes for display
+            const formattedNotes = validNotes.map(note => {
+                // Format each note (e.g., "C4" -> "C<sub>4</sub>")
+                return note.replace(/([A-G][#b]?)(\d+)/, '$1<sub>$2</sub>');
+            }).join(' - ');
             
-            // Show voicing type if available
-            const typeText = voicing.type ? ` (${voicing.type})` : '';
-            button.textContent = `${formattedNotes}${typeText} - Range: ${voicing.range} semitones`;
+            // Set button content with notes and range
+            button.innerHTML = `
+                <div>${formattedNotes}</div>
+                <div style="font-size: 0.8em; color: #666;">Range: ${range} semitones</div>
+            `;
             
-            button.onclick = () => {
-                // Check if audio is ready
-                if (!isLoaded) {
-                    showStatus('Please wait for the piano to load...', 'loading');
-                    return;
-                }
-                
-                // Ensure audio context is started if not already
-                if (!audioContextStarted) {
-                    initializeAudio();
-                }
-                
-                // Ensure audio context is running
-                if (Tone.context.state !== "running") {
-                    Tone.context.resume();
-                }
-                
-                // Stop any playing notes
-                piano.releaseAll();
+            // Add click event to play the voicing
+            button.addEventListener('click', function() {
+                // Log the notes we're about to play
+                console.log(`Clicked voicing button with notes: ${validNotes.join(', ')}`);
                 
                 // Play the voicing
-                piano.triggerAttackRelease(voicing.notes, "2n");
-            };
+                playVoicing(validNotes);
+            });
             
             voicingGrid.appendChild(button);
         });
         
-        // Add this inversion group to the main container
+        groupContainer.appendChild(voicingGrid);
         voicingsContainer.appendChild(groupContainer);
     });
+}
+
+// Function to play a voicing
+function playVoicing(notes) {
+    try {
+        // Check if we have notes to play
+        if (!notes || notes.length === 0) {
+            console.warn("No notes to play for voicing");
+            return;
+        }
+        
+        // Log the notes we're trying to play
+        console.log("Attempting to play voicing notes:", notes);
+        
+        // Ensure all notes have octave information
+        const validNotes = notes.filter(note => {
+            // Check if the note has an octave number
+            return note.match(/^[A-G][#b]?\d+$/);
+        });
+        
+        if (validNotes.length !== notes.length) {
+            console.warn("Some notes don't have octave information:", 
+                notes.filter(note => !note.match(/^[A-G][#b]?\d+$/)));
+        }
+        
+        // Start audio context if not already started
+        if (!audioContextStarted) {
+            initializeAudio();
+        }
+        
+        // Play the voicing if piano is loaded
+        if (piano && isLoaded) {
+            // Release any currently playing notes
+            piano.releaseAll();
+            
+            // Play each note in the voicing
+            validNotes.forEach(note => {
+                try {
+                    piano.triggerAttack(note);
+                } catch (error) {
+                    console.error(`Error playing note ${note}:`, error);
+                }
+            });
+            
+            // Update the fixed keyboard to show which notes are being played
+            updateFixedKeyboard(validNotes);
+            
+            console.log("Playing voicing:", validNotes);
+        } else {
+            console.warn("Piano not loaded yet");
+        }
+    } catch (error) {
+        console.error("Error playing voicing:", error);
+    }
+}
+
+// Helper function to get inversion name
+function getInversionName(inversionIndex) {
+    const inversionNames = [
+        'Root Position',
+        'First Inversion',
+        'Second Inversion',
+        'Third Inversion',
+        'Fourth Inversion',
+        'Fifth Inversion',
+        'Sixth Inversion'
+    ];
+    
+    return inversionNames[inversionIndex] || `Inversion ${inversionIndex}`;
 } 

@@ -2,6 +2,7 @@ body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
+    padding-bottom: 180px; /* Increased padding to make room for the fixed piano */
 }
 
 /* Import Google Fonts for fancy title */
@@ -235,4 +236,79 @@ h2 {
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 10px;
     width: 100%;
+}
+
+/* Fixed Piano Keyboard at the bottom */
+.fixed-piano-container {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    border-top: 1px solid #ddd;
+    height: auto;
+}
+
+.fixed-piano-header {
+    text-align: center;
+    margin-bottom: 5px;
+}
+
+.fixed-piano-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 16px;
+}
+
+#fixed-piano {
+    width: 100%;
+    max-width: none;
+    height: 120px;
+    margin: 0 auto;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#fixed-piano svg {
+    width: 100%;
+    min-width: 100%;
+}
+
+/* Styling for active keys in the fixed piano */
+.active-key {
+    fill: #4caf50 !important; /* Green color for active keys */
+    stroke: #2e7d32 !important;
+    stroke-width: 2px !important;
+    transition: fill 0.1s ease-in-out;
+}
+
+/* For active black keys */
+.active-black-key {
+    fill: #66bb6a !important; /* Lighter green for active black keys */
+}
+
+/* For active key text */
+.active-key-text {
+    fill: white !important;
+}
+
+/* Add horizontal scrollbar styling for the fixed piano */
+#fixed-piano::-webkit-scrollbar {
+    height: 8px;
+}
+
+#fixed-piano::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+#fixed-piano::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+#fixed-piano::-webkit-scrollbar-thumb:hover {
+    background: #555;
 } 
