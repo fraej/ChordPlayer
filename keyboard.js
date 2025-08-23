@@ -14,7 +14,7 @@ class SVGKeyboard {
     constructor(container, options = {}) {
         // Default options
         this.options = {
-            width: 'auto', // responsive width
+            width: 350, // fixed internal width; CSS scales container
             height: 80,
             initialSelectedNote: 'C',
             whiteKeyColor: 'white',
@@ -52,115 +52,87 @@ class SVGKeyboard {
         // Create SVG element
         this.svg = document.createElementNS(this.svgNS, "svg");
         this.svg.setAttribute("class", "piano-svg");
-        // Determine current container width (fallback 350)
-        const containerWidth = this.container.clientWidth || 350;
-        this.actualWidth = containerWidth;
-        // Compute base white key width (float)
-        const baseWhiteKeyWidth = containerWidth / 7;
-        // Build white keys ensuring last key absorbs any rounding remainder
-        this.whiteKeys = [];
-        for (let i = 0; i < 7; i++) {
-            const x = i * baseWhiteKeyWidth;
-            const width = (i === 6) ? (containerWidth - baseWhiteKeyWidth * 6) : baseWhiteKeyWidth;
-            this.whiteKeys.push({ note: 'CDEFGAB'[i], x, width });
-        }
-        // Black key width proportional
-        const blackWidth = baseWhiteKeyWidth * 0.6;
-        const centerBetween = idx => (idx + 0.5) * baseWhiteKeyWidth; // center between white idx and next
-        this.blackKeys = [
-            { note: 'C#', x: centerBetween(0) - blackWidth / 2 },
-            { note: 'D#', x: centerBetween(1) - blackWidth / 2 },
-            { note: 'F#', x: centerBetween(3) - blackWidth / 2 },
-            { note: 'G#', x: centerBetween(4) - blackWidth / 2 },
-            { note: 'A#', x: centerBetween(5) - blackWidth / 2 }
-        ];
-        this.blackKeyWidth = blackWidth;
-        this.whiteKeyWidth = baseWhiteKeyWidth; // for reference
-        this.svg.setAttribute("viewBox", `0 0 ${containerWidth} ${this.options.height}`);
-        this.svg.style.width = '100%';
-        this.svg.style.height = '100%';
-        this.svg.setAttribute('preserveAspectRatio', 'none');
+        this.svg.setAttribute("viewBox", `0 0 ${this.options.width} ${this.options.height}`);
+        this.svg.style.width = "100%";
+        this.svg.style.height = "100%";
         this.container.appendChild(this.svg);
+        
+        // Define key layouts (fixed positions)
+        this.whiteKeys = [
+            { note: 'C', x: 0 },
+            { note: 'D', x: 50 },
+            { note: 'E', x: 100 },
+            { note: 'F', x: 150 },
+            { note: 'G', x: 200 },
+            { note: 'A', x: 250 },
+            { note: 'B', x: 300 }
+        ];
+        this.blackKeys = [
+            { note: 'C#', x: 35 },
+            { note: 'D#', x: 85 },
+            { note: 'F#', x: 185 },
+            { note: 'G#', x: 235 },
+            { note: 'A#', x: 285 }
+        ];
 
-        // Create white keys
+        // Draw white keys
         this.whiteKeys.forEach(key => {
-            const rect = document.createElementNS(this.svgNS, "rect");
-            rect.setAttribute("class", "white-key");
-            if (key.note === this.selectedNote) {
-                rect.classList.add("selected");
-            }
-            rect.setAttribute("x", key.x);
-            rect.setAttribute("y", 0);
-            rect.setAttribute("width", key.width);
-            rect.setAttribute("height", this.options.height);
-            rect.setAttribute("rx", 3);
-            rect.setAttribute("data-note", key.note);
-            rect.style.fill = key.note === this.selectedNote 
-                ? this.options.selectedWhiteKeyColor 
-                : this.options.whiteKeyColor;
-            rect.style.stroke = "#ccc";
-            rect.style.strokeWidth = "1";
-            rect.style.cursor = "pointer";
-            
-            // Add click event
-            rect.addEventListener("click", () => this.selectNote(key.note));
-            
+            const rect = document.createElementNS(this.svgNS, 'rect');
+            rect.setAttribute('class', 'white-key');
+            if (key.note === this.selectedNote) rect.classList.add('selected');
+            rect.setAttribute('x', key.x);
+            rect.setAttribute('y', 0);
+            rect.setAttribute('width', 50);
+            rect.setAttribute('height', this.options.height);
+            rect.setAttribute('rx', 3);
+            rect.setAttribute('data-note', key.note);
+            rect.style.fill = key.note === this.selectedNote ? this.options.selectedWhiteKeyColor : this.options.whiteKeyColor;
+            rect.style.stroke = '#ccc';
+            rect.style.strokeWidth = '1';
+            rect.style.cursor = 'pointer';
+            rect.addEventListener('click', () => this.selectNote(key.note));
             this.svg.appendChild(rect);
-            
-            // Add key label
-            const text = document.createElementNS(this.svgNS, "text");
-            text.setAttribute("class", "key-text");
-            text.setAttribute("x", key.x + key.width / 2);
-            text.setAttribute("y", this.options.height - 10);
-            text.style.fontSize = "10px";
-            text.style.textAnchor = "middle";
-            text.style.userSelect = "none";
-            text.style.pointerEvents = "none";
-            // Set text color to white if the key is selected and using a dark color
-            if (key.note === this.selectedNote && this.options.selectedWhiteKeyColor === '#d32f2f') {
-                text.setAttribute("fill", "white");
-            } else {
-                text.setAttribute("fill", "black");
-            }
+
+            const text = document.createElementNS(this.svgNS, 'text');
+            text.setAttribute('class', 'key-text');
+            text.setAttribute('x', key.x + 25);
+            text.setAttribute('y', this.options.height - 10);
+            text.style.fontSize = '10px';
+            text.style.textAnchor = 'middle';
+            text.style.userSelect = 'none';
+            text.style.pointerEvents = 'none';
+            text.setAttribute('fill', key.note === this.selectedNote && this.options.selectedWhiteKeyColor === '#d32f2f' ? 'white' : 'black');
             text.textContent = key.note;
             this.svg.appendChild(text);
         });
-        
-        // Create black keys (on top of white keys)
+
+        // Draw black keys on top
         this.blackKeys.forEach(key => {
-            const rect = document.createElementNS(this.svgNS, "rect");
-            rect.setAttribute("class", "black-key");
-            if (key.note === this.selectedNote) {
-                rect.classList.add("selected");
-            }
-            rect.setAttribute("x", key.x);
-            rect.setAttribute("y", 0);
-            rect.setAttribute("width", blackWidth);
-            rect.setAttribute("height", this.options.height * 0.625); // 50/80
-            rect.setAttribute("rx", 3);
-            rect.setAttribute("data-note", key.note);
-            rect.style.fill = key.note === this.selectedNote 
-                ? this.options.selectedBlackKeyColor 
-                : this.options.blackKeyColor;
+            const rect = document.createElementNS(this.svgNS, 'rect');
+            rect.setAttribute('class', 'black-key');
+            if (key.note === this.selectedNote) rect.classList.add('selected');
+            rect.setAttribute('x', key.x);
+            rect.setAttribute('y', 0);
+            rect.setAttribute('width', 30);
+            rect.setAttribute('height', this.options.height * 0.625);
+            rect.setAttribute('rx', 3);
+            rect.setAttribute('data-note', key.note);
+            rect.style.fill = key.note === this.selectedNote ? this.options.selectedBlackKeyColor : this.options.blackKeyColor;
             rect.style.stroke = this.options.blackKeyColor;
-            rect.style.strokeWidth = "1";
-            rect.style.cursor = "pointer";
-            
-            // Add click event
-            rect.addEventListener("click", () => this.selectNote(key.note));
-            
+            rect.style.strokeWidth = '1';
+            rect.style.cursor = 'pointer';
+            rect.addEventListener('click', () => this.selectNote(key.note));
             this.svg.appendChild(rect);
-            
-            // Add key label
-            const text = document.createElementNS(this.svgNS, "text");
-            text.setAttribute("class", "key-text");
-            text.setAttribute("x", key.x + blackWidth / 2);
-            text.setAttribute("y", this.options.height * 0.5);
-            text.setAttribute("fill", "white");
-            text.style.fontSize = "10px";
-            text.style.textAnchor = "middle";
-            text.style.userSelect = "none";
-            text.style.pointerEvents = "none";
+
+            const text = document.createElementNS(this.svgNS, 'text');
+            text.setAttribute('class', 'key-text');
+            text.setAttribute('x', key.x + 15);
+            text.setAttribute('y', this.options.height * 0.5);
+            text.setAttribute('fill', 'white');
+            text.style.fontSize = '10px';
+            text.style.textAnchor = 'middle';
+            text.style.userSelect = 'none';
+            text.style.pointerEvents = 'none';
             text.textContent = key.note;
             this.svg.appendChild(text);
         });
@@ -177,37 +149,18 @@ class SVGKeyboard {
         // Update selected key visual
         this.svg.querySelectorAll('rect').forEach(key => {
             const keyNote = key.getAttribute('data-note');
-            const isWhiteKey = key.classList.contains('white-key');
-            
+            const isWhite = key.classList.contains('white-key');
             if (keyNote === note) {
                 key.classList.add('selected');
-                key.style.fill = isWhiteKey 
-                    ? this.options.selectedWhiteKeyColor 
-                    : this.options.selectedBlackKeyColor;
-                
-                // Find and update the corresponding text color
-                if (isWhiteKey && this.options.selectedWhiteKeyColor === '#d32f2f') {
-                    const keyTexts = this.svg.querySelectorAll('.key-text');
-                    keyTexts.forEach(text => {
-                        if (text.textContent === keyNote) {
-                            text.setAttribute("fill", "white");
-                        }
-                    });
+                key.style.fill = isWhite ? this.options.selectedWhiteKeyColor : this.options.selectedBlackKeyColor;
+                if (isWhite && this.options.selectedWhiteKeyColor === '#d32f2f') {
+                    this.svg.querySelectorAll('.key-text').forEach(t => { if (t.textContent === keyNote) t.setAttribute('fill','white'); });
                 }
             } else {
                 key.classList.remove('selected');
-                key.style.fill = isWhiteKey 
-                    ? this.options.whiteKeyColor 
-                    : this.options.blackKeyColor;
-                
-                // Reset text color for white keys
-                if (isWhiteKey) {
-                    const keyTexts = this.svg.querySelectorAll('.key-text');
-                    keyTexts.forEach(text => {
-                        if (text.textContent === keyNote) {
-                            text.setAttribute("fill", "black");
-                        }
-                    });
+                key.style.fill = isWhite ? this.options.whiteKeyColor : this.options.blackKeyColor;
+                if (isWhite) {
+                    this.svg.querySelectorAll('.key-text').forEach(t => { if (t.textContent === keyNote) t.setAttribute('fill','black'); });
                 }
             }
         });
@@ -244,11 +197,7 @@ class SVGKeyboard {
      * Rebuild keyboard on resize when width is auto
      */
     resize() {
-        if (this.options.width !== 'auto') return;
-        const prev = this.selectedNote;
-        this.container.innerHTML = '';
-        this.createKeyboard();
-        this.selectNote(prev);
+    // No responsive rebuild needed in fixed layout
     }
 }
 
