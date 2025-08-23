@@ -163,10 +163,17 @@ h2 {
 
 /* Piano container centered */
 .piano-container {
-    width: 350px;
+    /* Make the root-selection keyboard responsive and fill the available width */
+    width: 100%;
+    max-width: 100%;
     height: 80px;
-    margin: 0 auto 15px auto;
+    margin: 0 0 15px 0; /* remove auto-centering so it stretches */
     position: relative;
+}
+
+/* Ensure SVG keyboard has no unintended gaps */
+.piano-container svg.piano-svg {
+    display: block; /* remove inline gaps */
 }
 
 /* Root and octave container - horizontal layout */
@@ -274,6 +281,7 @@ h2 {
 #fixed-piano svg {
     width: 100%;
     min-width: 100%;
+    display: block; /* remove inline gap */
 }
 
 /* Styling for active keys in the fixed piano */

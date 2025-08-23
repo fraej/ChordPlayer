@@ -14,7 +14,7 @@ class SVGKeyboard {
     constructor(container, options = {}) {
         // Default options
         this.options = {
-            width: 350,
+            width: 'auto', // responsive width
             height: 80,
             initialSelectedNote: 'C',
             whiteKeyColor: 'white',
@@ -40,26 +40,7 @@ class SVGKeyboard {
         // Current selected note
         this.selectedNote = this.options.initialSelectedNote;
         
-        // Define key layouts
-        this.whiteKeys = [
-            { note: 'C', x: 0 },
-            { note: 'D', x: 50 },
-            { note: 'E', x: 100 },
-            { note: 'F', x: 150 },
-            { note: 'G', x: 200 },
-            { note: 'A', x: 250 },
-            { note: 'B', x: 300 }
-        ];
-        
-        this.blackKeys = [
-            { note: 'C#', x: 35 },
-            { note: 'D#', x: 85 },
-            { note: 'F#', x: 185 },
-            { note: 'G#', x: 235 },
-            { note: 'A#', x: 285 }
-        ];
-        
-        // Create the keyboard
+    // Create the keyboard
         this.createKeyboard();
     }
     
@@ -71,11 +52,36 @@ class SVGKeyboard {
         // Create SVG element
         this.svg = document.createElementNS(this.svgNS, "svg");
         this.svg.setAttribute("class", "piano-svg");
-        this.svg.setAttribute("viewBox", `0 0 ${this.options.width} ${this.options.height}`);
-        this.svg.style.width = "100%";
-        this.svg.style.height = "100%";
+        // Determine current container width (fallback 350)
+        const containerWidth = this.container.clientWidth || 350;
+        this.actualWidth = containerWidth;
+        // Compute base white key width (float)
+        const baseWhiteKeyWidth = containerWidth / 7;
+        // Build white keys ensuring last key absorbs any rounding remainder
+        this.whiteKeys = [];
+        for (let i = 0; i < 7; i++) {
+            const x = i * baseWhiteKeyWidth;
+            const width = (i === 6) ? (containerWidth - baseWhiteKeyWidth * 6) : baseWhiteKeyWidth;
+            this.whiteKeys.push({ note: 'CDEFGAB'[i], x, width });
+        }
+        // Black key width proportional
+        const blackWidth = baseWhiteKeyWidth * 0.6;
+        const centerBetween = idx => (idx + 0.5) * baseWhiteKeyWidth; // center between white idx and next
+        this.blackKeys = [
+            { note: 'C#', x: centerBetween(0) - blackWidth / 2 },
+            { note: 'D#', x: centerBetween(1) - blackWidth / 2 },
+            { note: 'F#', x: centerBetween(3) - blackWidth / 2 },
+            { note: 'G#', x: centerBetween(4) - blackWidth / 2 },
+            { note: 'A#', x: centerBetween(5) - blackWidth / 2 }
+        ];
+        this.blackKeyWidth = blackWidth;
+        this.whiteKeyWidth = baseWhiteKeyWidth; // for reference
+        this.svg.setAttribute("viewBox", `0 0 ${containerWidth} ${this.options.height}`);
+        this.svg.style.width = '100%';
+        this.svg.style.height = '100%';
+        this.svg.setAttribute('preserveAspectRatio', 'none');
         this.container.appendChild(this.svg);
-        
+
         // Create white keys
         this.whiteKeys.forEach(key => {
             const rect = document.createElementNS(this.svgNS, "rect");
@@ -85,7 +91,7 @@ class SVGKeyboard {
             }
             rect.setAttribute("x", key.x);
             rect.setAttribute("y", 0);
-            rect.setAttribute("width", 50);
+            rect.setAttribute("width", key.width);
             rect.setAttribute("height", this.options.height);
             rect.setAttribute("rx", 3);
             rect.setAttribute("data-note", key.note);
@@ -104,7 +110,7 @@ class SVGKeyboard {
             // Add key label
             const text = document.createElementNS(this.svgNS, "text");
             text.setAttribute("class", "key-text");
-            text.setAttribute("x", key.x + 25);
+            text.setAttribute("x", key.x + key.width / 2);
             text.setAttribute("y", this.options.height - 10);
             text.style.fontSize = "10px";
             text.style.textAnchor = "middle";
@@ -129,7 +135,7 @@ class SVGKeyboard {
             }
             rect.setAttribute("x", key.x);
             rect.setAttribute("y", 0);
-            rect.setAttribute("width", 30);
+            rect.setAttribute("width", blackWidth);
             rect.setAttribute("height", this.options.height * 0.625); // 50/80
             rect.setAttribute("rx", 3);
             rect.setAttribute("data-note", key.note);
@@ -148,7 +154,7 @@ class SVGKeyboard {
             // Add key label
             const text = document.createElementNS(this.svgNS, "text");
             text.setAttribute("class", "key-text");
-            text.setAttribute("x", key.x + 15);
+            text.setAttribute("x", key.x + blackWidth / 2);
             text.setAttribute("y", this.options.height * 0.5);
             text.setAttribute("fill", "white");
             text.style.fontSize = "10px";
@@ -232,6 +238,17 @@ class SVGKeyboard {
         // Clear the container and recreate the keyboard
         this.container.innerHTML = '';
         this.createKeyboard();
+    }
+
+    /**
+     * Rebuild keyboard on resize when width is auto
+     */
+    resize() {
+        if (this.options.width !== 'auto') return;
+        const prev = this.selectedNote;
+        this.container.innerHTML = '';
+        this.createKeyboard();
+        this.selectNote(prev);
     }
 }
 

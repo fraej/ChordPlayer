@@ -50,16 +50,16 @@ function initializeFixedKeyboard() {
             // Get the container width
             const containerWidth = window.innerWidth;
             
-            // Calculate key width based on container width
-            // We need to fit 52 white keys (88 keys total, but 52 white keys)
-            const whiteKeyWidth = Math.max(20, Math.floor(containerWidth / 52));
+            // Calculate key width based on container width (allow fractional for perfect fit)
+            // We need to fit 52 white keys (88 total, 52 white)
+            const whiteKeyWidth = containerWidth / 52; // fractional allowed to avoid right gap
             
             // Create SVG element - make it span the full width
             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
             svg.setAttribute("class", "piano-svg");
             
             // Calculate the total SVG width based on the number of white keys
-            const totalWidth = whiteKeyWidth * 52;
+            const totalWidth = whiteKeyWidth * 52; // equals containerWidth
             svg.setAttribute("viewBox", `0 0 ${totalWidth} 120`);
             svg.style.width = "100%";
             svg.style.height = "100%";
@@ -166,13 +166,10 @@ function initializeFixedKeyboard() {
             
             // Add window resize handler to adjust keyboard size
             window.addEventListener('resize', function() {
-                // Recalculate key width based on new container width
                 const newContainerWidth = window.innerWidth;
-                const newWhiteKeyWidth = Math.max(20, Math.floor(newContainerWidth / 52));
-                
-                // Update the viewBox
+                const newWhiteKeyWidth = newContainerWidth / 52;
                 const newTotalWidth = newWhiteKeyWidth * 52;
-                svg.setAttribute("viewBox", `0 0 ${newTotalWidth} 120`);
+                svg.setAttribute('viewBox', `0 0 ${newTotalWidth} 120`);
             });
         }
     } catch (error) {
@@ -505,6 +502,13 @@ function initializeKeyboard() {
             onNoteSelected: selectRootNote,
             selectedWhiteKeyColor: '#d32f2f', // Same darker red for selected white keys
             selectedBlackKeyColor: '#d32f2f'  // Darker red for selected black keys
+        });
+
+        // Handle resizing for responsive keyboard
+        window.addEventListener('resize', () => {
+            if (keyboard && typeof keyboard.resize === 'function') {
+                keyboard.resize();
+            }
         });
         
         // Ensure colors are applied
