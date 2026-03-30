@@ -9,6 +9,7 @@ let keyboard; // SVG Keyboard instance
 let fixedKeyboard; // Fixed SVG Keyboard instance at the bottom
 let initialLoadComplete = false; // Flag to track initial load
 let currentlyPlayingNotes = []; // Track which notes are currently playing
+let activePopupButton = null; // Track which chord button has the popup open
 
 // Wait for the window to fully load before initializing
 window.onload = function() {
@@ -24,8 +25,8 @@ window.onload = function() {
     
     // Add event listener to octave selector
     document.getElementById('octave').addEventListener('change', function() {
+        closeVoicingPopup();
         generateChords();
-        showVoicings(currentRoot, "M", document.getElementById('octave').value);
     });
     
     // Initialize audio on page load
@@ -184,34 +185,19 @@ function updateFixedKeyboard(notes) {
     // Clear all active keys first
     clearActiveKeys();
     
-    // Store the currently playing notes
-    currentlyPlayingNotes = notes;
+    // Normalize all notes to the keyboard's naming convention (sharp-only)
+    // This handles B#→C, E#→F, Cb→B, Fb→E, double sharps/flats, etc.
+    const normalizedNotes = notes.map(n => normalizeNoteForKeyboard(n)).filter(n => n !== null);
     
-    console.log("Highlighting notes:", notes);
+    // Store the currently playing notes
+    currentlyPlayingNotes = normalizedNotes;
+    
+    console.log("Highlighting notes:", notes, "→ normalized:", normalizedNotes);
     
     // Highlight the active keys
-    notes.forEach(note => {
-        // Make sure we have a valid note format with octave
-        if (!note.match(/^[A-G][#b]?\d+$/)) {
-            console.warn(`Invalid note format: ${note}`);
-            return;
-        }
-        
-        // Find the key with this exact note (including octave)
+    normalizedNotes.forEach(note => {
+        // Find the key with this note (should always match since we normalized)
         let key = fixedKeyboard.svg.querySelector(`rect[data-note="${note}"]`);
-        
-        // If the exact note isn't found, try to find it with enharmonic equivalents
-        if (!key) {
-            // Try to find enharmonic equivalents (e.g., C# = Db)
-            const enharmonics = getEnharmonicEquivalents(note);
-            for (const enharmonic of enharmonics) {
-                key = fixedKeyboard.svg.querySelector(`rect[data-note="${enharmonic}"]`);
-                if (key) {
-                    console.log(`Found enharmonic equivalent for ${note}: ${enharmonic}`);
-                    break;
-                }
-            }
-        }
         
         if (key) {
             const isBlackKey = key.classList.contains('black-key');
@@ -227,100 +213,42 @@ function updateFixedKeyboard(notes) {
             key.style.stroke = '#2e7d32';
             key.style.strokeWidth = '2px';
         } else {
-            console.warn(`Could not find key for note: ${note}`);
-            
-            // Try to find the note without the octave
-            const noteName = note.replace(/\d+$/, '');
-            const octave = note.match(/\d+$/)[0];
-            console.log(`Trying to find key for note ${noteName} in octave ${octave}`);
-            
-            // Try to find a key with this note name in any octave
-            const keys = fixedKeyboard.svg.querySelectorAll(`rect[data-note^="${noteName}"]`);
-            if (keys.length > 0) {
-                console.log(`Found ${keys.length} keys for note ${noteName} in different octaves`);
-                
-                // Find the key with the closest octave
-                let closestKey = null;
-                let minOctaveDiff = Infinity;
-                
-                keys.forEach(k => {
-                    const keyOctave = k.getAttribute('data-note').match(/\d+$/)[0];
-                    const octaveDiff = Math.abs(parseInt(keyOctave) - parseInt(octave));
-                    
-                    if (octaveDiff < minOctaveDiff) {
-                        minOctaveDiff = octaveDiff;
-                        closestKey = k;
-                    }
-                });
-                
-                if (closestKey) {
-                    console.log(`Using key for note ${closestKey.getAttribute('data-note')} as fallback`);
-                    
-                    const isBlackKey = closestKey.classList.contains('black-key');
-                    
-                    // Add active class
-                    closestKey.classList.add('active-key');
-                    if (isBlackKey) {
-                        closestKey.classList.add('active-black-key');
-                    }
-                    
-                    // Update the fill color
-                    closestKey.style.fill = isBlackKey ? '#66bb6a' : '#4caf50';
-                    closestKey.style.stroke = '#2e7d32';
-                    closestKey.style.strokeWidth = '2px';
-                }
-            }
+            console.warn(`Could not find key for normalized note: ${note}`);
         }
     });
     
     // Scroll to the middle of the active keys if there are any
-    if (notes.length > 0) {
+    if (normalizedNotes.length > 0) {
         scrollToActiveKeys();
     }
 }
 
-// Function to get enharmonic equivalents of a note
-function getEnharmonicEquivalents(note) {
-    // Extract note name and octave
-    const match = note.match(/([A-G][#b]?)(\d+)/);
-    if (!match) return [note];
-    
-    const noteName = match[1];
-    const octave = match[2];
-    
-    // Common enharmonic equivalents
-    const enharmonicMap = {
-        'C#': 'Db',
-        'Db': 'C#',
-        'D#': 'Eb',
-        'Eb': 'D#',
-        'F#': 'Gb',
-        'Gb': 'F#',
-        'G#': 'Ab',
-        'Ab': 'G#',
-        'A#': 'Bb',
-        'Bb': 'A#',
-        // Special cases for B/C and E/F
-        'B': ['C', (parseInt(octave) - 1).toString()],
-        'C': ['B', (parseInt(octave) + 1).toString()],
-        'E': ['F', (parseInt(octave) - 1).toString()],
-        'F': ['E', (parseInt(octave) + 1).toString()]
-    };
-    
-    const result = [note]; // Always include the original note
-    
-    if (enharmonicMap[noteName]) {
-        if (Array.isArray(enharmonicMap[noteName])) {
-            // Handle special cases for B/C and E/F
-            const [enhName, enhOctave] = enharmonicMap[noteName];
-            result.push(`${enhName}${enhOctave}`);
-        } else {
-            // Handle regular enharmonic equivalents
-            result.push(`${enharmonicMap[noteName]}${octave}`);
-        }
+// The keyboard only uses sharp-based note names: C, C#, D, D#, E, F, F#, G, G#, A, A#, B
+// This maps MIDI pitch class (0-11) to the keyboard's note name
+const MIDI_TO_KEYBOARD_NAME = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+// Normalize any note (including B#, E#, Cb, Fb, double sharps ##, double flats bb)
+// to the keyboard's sharp-only naming convention using MIDI as the universal reference.
+function normalizeNoteForKeyboard(note) {
+    try {
+        const midi = Tonal.Note.midi(note);
+        if (midi === null) return null;
+        
+        const pitchClass = midi % 12;
+        const octave = Math.floor(midi / 12) - 1; // MIDI octave convention
+        return `${MIDI_TO_KEYBOARD_NAME[pitchClass]}${octave}`;
+    } catch (e) {
+        return null;
     }
-    
-    return result;
+}
+
+// Function to get enharmonic equivalents of a note (kept for backward compat, but now uses MIDI)
+function getEnharmonicEquivalents(note) {
+    const normalized = normalizeNoteForKeyboard(note);
+    if (normalized && normalized !== note) {
+        return [note, normalized];
+    }
+    return [note];
 }
 
 // Function to scroll to the active keys
@@ -382,105 +310,66 @@ function clearActiveKeys() {
     currentlyPlayingNotes = [];
 }
 
-// Function to force initial chord and voicing generation
+// Function to force initial chord generation
 function forceInitialGeneration() {
-    // Set a flag to prevent multiple initializations
     if (initialLoadComplete) return;
     
-    console.log("Forcing initial chord and voicing generation...");
+    console.log("Forcing initial chord generation...");
     
-    // Set the current root explicitly
     currentRoot = "C";
     if (currentRootDisplay) {
         currentRootDisplay.textContent = `Root: C`;
     }
     
-    // Update keyboard selection if available
     updateKeyboardColors();
     
-    // Generate chords directly
     const chordButtonsContainer = document.getElementById('chordButtons');
     if (chordButtonsContainer) {
         generateChords();
     }
     
-    // Generate voicings directly
-    const voicingsContainer = document.getElementById('voicingButtons');
-    if (voicingsContainer) {
-        showVoicings("C", "M", document.getElementById('octave').value);
-    }
-    
-    // Try again after a delay if needed
     setTimeout(function() {
-        // Check if chords and voicings are populated
         const hasChords = chordButtonsContainer && chordButtonsContainer.children.length > 0;
-        const hasVoicings = voicingsContainer && voicingsContainer.children.length > 0;
         
-        if (!hasChords || !hasVoicings) {
-            console.log("Retrying chord and voicing generation...");
-            
-            // Clear and regenerate
+        if (!hasChords) {
+            console.log("Retrying chord generation...");
             if (chordButtonsContainer) chordButtonsContainer.innerHTML = '';
-            if (voicingsContainer) voicingsContainer.innerHTML = '';
-            
-            // Regenerate
             generateChords();
-            showVoicings("C", "M", document.getElementById('octave').value);
             
-            // Update keyboard selection if available
             if (keyboard && typeof keyboard.selectNote === 'function') {
                 keyboard.selectNote("C");
                 updateKeyboardColors();
             }
         }
         
-        // Mark initialization as complete
         initialLoadComplete = true;
     }, 500);
 }
 
-// Function to ensure UI is ready and generate initial chords and voicings
+// Function to ensure UI is ready
 function ensureUIReady() {
-    console.log("Ensuring UI is ready and generating initial chords and voicings...");
-    
-    // First attempt at generating chords and voicings
+    console.log("Ensuring UI is ready...");
     generateChords();
-    showVoicings("C", "M", document.getElementById('octave').value);
     
-    // Force regeneration after a short delay to ensure everything is loaded
     setTimeout(function() {
-        console.log("Forcing chord and voicing generation...");
         try {
-            // Force regeneration of chords for C
             currentRoot = "C";
             document.getElementById('current-root').textContent = `Root: C`;
             
-            // Update keyboard selected note if keyboard is initialized
             if (keyboard && typeof keyboard.selectNote === 'function') {
                 keyboard.selectNote("C");
             }
             
-            // Clear and regenerate chord buttons
             const chordButtonsContainer = document.getElementById('chordButtons');
             if (chordButtonsContainer) {
                 chordButtonsContainer.innerHTML = '';
                 generateChords();
             }
-            
-            // Clear and regenerate voicing buttons
-            const voicingsContainer = document.getElementById('voicingButtons');
-            if (voicingsContainer) {
-                voicingsContainer.innerHTML = '';
-                showVoicings("C", "M", document.getElementById('octave').value);
-            }
-            
-            console.log("Chord and voicing generation completed");
         } catch (error) {
             console.error("Error during forced chord generation:", error);
-            // Try again after a longer delay if there was an error
             setTimeout(forceInitialGeneration, 1000);
         }
-    }, 500); // 500ms delay to ensure everything is loaded
+    }, 500);
 }
 
 // Function to update keyboard colors
@@ -532,6 +421,9 @@ function selectRootNote(note) {
     console.log("Root note selected:", note);
     currentRoot = note;
     
+    // Close any open popup
+    closeVoicingPopup();
+    
     // Update the root note display
     if (currentRootDisplay) {
         currentRootDisplay.textContent = `Root: ${note}`;
@@ -541,12 +433,6 @@ function selectRootNote(note) {
     const chordButtonsContainer = document.getElementById('chordButtons');
     if (chordButtonsContainer) {
         generateChords();
-    }
-    
-    // Show voicings for the major chord of the new root note
-    const voicingsContainer = document.getElementById('voicingButtons');
-    if (voicingsContainer) {
-        showVoicings(note, "M", document.getElementById('octave').value);
     }
 }
 
@@ -758,19 +644,29 @@ function generateChords() {
         // Create the button
         const button = document.createElement('button');
         button.className = 'chord-button';
+        button.dataset.symbol = symbol;
+        button.dataset.display = display;
         
-        // Set the button content
+        // Set the button content - symbol + full name
         button.innerHTML = `
-            ${currentRoot}${display}
-            <span class="note-count">${notes.length} notes</span>
+            <span class="chord-info">
+                <span class="chord-name">${currentRoot}${symbol}</span>
+                <span class="chord-full-name">${display}</span>
+            </span>
+            <span class="note-count">${notes.length}</span>
         `;
+        button.title = `${currentRoot}${display} (${notes.length} notes)`;
         
-        // Add click event to play the chord
-        button.addEventListener('click', function() {
-            playChord(currentRoot, symbol, octave);
+        // Add click event to play chord and show voicing popup
+        button.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const oct = document.getElementById('octave').value;
             
-            // Show voicings for this chord
-            showVoicings(currentRoot, symbol, octave);
+            // Play the straight chord immediately
+            playChordDirect(currentRoot, symbol, oct);
+            
+            // Show voicing popup near this button
+            showVoicingPopup(button, currentRoot, symbol, oct);
         });
         
         // Add the button to the grid
@@ -861,7 +757,192 @@ function getChordNotes(root, type, octave) {
     }
 }
 
-// Function to play a chord
+// Play a chord directly (without opening popup or other side effects)
+function playChordDirect(root, type, octave) {
+    try {
+        const notes = getChordNotes(root, type, octave);
+        if (!notes || notes.length === 0) return;
+        
+        const validNotes = notes.filter(note => Tonal.Note.midi(note) !== null);
+        const sortedNotes = sortNotesByPitch(validNotes);
+        
+        if (!audioContextStarted) initializeAudio();
+        
+        if (piano && isLoaded) {
+            piano.releaseAll();
+            sortedNotes.forEach(note => {
+                try { piano.triggerAttack(note); } catch (e) { console.error(`Error playing note ${note}:`, e); }
+            });
+            updateFixedKeyboard(sortedNotes);
+            console.log(`Playing chord: ${root}${type}`, sortedNotes);
+        }
+    } catch (error) {
+        console.error(`Error playing chord ${root}${type}:`, error);
+    }
+}
+
+// Close the voicing popup and clean up
+function closeVoicingPopup() {
+    const popup = document.getElementById('voicingPopup');
+    if (popup) {
+        popup.style.display = 'none';
+        popup.innerHTML = '';
+    }
+    
+    // Remove overlay
+    const overlay = document.querySelector('.voicing-overlay');
+    if (overlay) overlay.remove();
+    
+    // Remove active state from chord button
+    if (activePopupButton) {
+        activePopupButton.classList.remove('chord-active');
+        activePopupButton = null;
+    }
+}
+
+// Show the voicing popup near a chord button
+function showVoicingPopup(buttonEl, rootNote, chordType, baseOctave) {
+    const popup = document.getElementById('voicingPopup');
+    if (!popup) return;
+    
+    // If clicking the same button again, toggle off
+    if (activePopupButton === buttonEl && popup.style.display !== 'none') {
+        closeVoicingPopup();
+        return;
+    }
+    
+    // Close any previous popup
+    closeVoicingPopup();
+    
+    // Mark this button as active
+    activePopupButton = buttonEl;
+    buttonEl.classList.add('chord-active');
+    
+    // Create overlay to catch outside clicks
+    const overlay = document.createElement('div');
+    overlay.className = 'voicing-overlay';
+    overlay.addEventListener('click', function() {
+        closeVoicingPopup();
+    });
+    document.body.appendChild(overlay);
+    
+    // Get all voicings
+    const allVoicings = getAllVoicings(rootNote, chordType, baseOctave);
+    
+    // Build popup content
+    popup.innerHTML = '';
+    
+    // Header
+    const header = document.createElement('div');
+    header.className = 'voicing-popup-header';
+    header.innerHTML = `
+        <span class="voicing-popup-title">${rootNote}${chordType} voicings</span>
+        <button class="voicing-popup-close" title="Close">✕</button>
+    `;
+    header.querySelector('.voicing-popup-close').addEventListener('click', function(e) {
+        e.stopPropagation();
+        closeVoicingPopup();
+    });
+    popup.appendChild(header);
+    
+    if (allVoicings.length === 0) {
+        popup.innerHTML += '<div style="padding:4px;color:#999;font-size:0.8em;">No voicings available</div>';
+    } else {
+        // Group voicings by type-inversion
+        const grouped = {};
+        allVoicings.forEach(v => {
+            const key = `${v.type}-${v.inversionIndex}`;
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(v);
+        });
+        
+        Object.keys(grouped).sort().forEach(groupKey => {
+            const voicings = grouped[groupKey];
+            const [type, invIdx] = groupKey.split('-');
+            
+            const group = document.createElement('div');
+            group.className = 'inversion-group';
+            
+            // Compact title
+            const shortType = type === 'close' ? 'Close' : 'Open';
+            const shortInv = getInversionName(parseInt(invIdx)).replace('Position', 'Pos');
+            
+            const title = document.createElement('div');
+            title.className = 'inversion-title';
+            title.textContent = `${shortType} - ${shortInv}`;
+            group.appendChild(title);
+            
+            const grid = document.createElement('div');
+            grid.className = 'voicing-grid';
+            
+            voicings.forEach(voicing => {
+                const { notes, range } = voicing;
+                const validNotes = notes.filter(n => Tonal.Note.midi(n) !== null);
+                if (validNotes.length !== notes.length) return;
+                
+                const btn = document.createElement('button');
+                btn.className = 'voicing-button';
+                
+                // Format notes compactly
+                const formatted = validNotes.map(n => {
+                    const norm = normalizeNoteForKeyboard(n) || n;
+                    return norm.replace(/([A-G]#?)(\d+)/, '$1<sub>$2</sub>');
+                }).join('-');
+                
+                btn.innerHTML = `${formatted} <span style="color:#aaa;font-size:0.85em">${range}st</span>`;
+                
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    // Highlight this voicing button
+                    popup.querySelectorAll('.voicing-button').forEach(b => b.classList.remove('active-voicing'));
+                    btn.classList.add('active-voicing');
+                    // Play it
+                    playVoicing(validNotes);
+                });
+                
+                grid.appendChild(btn);
+            });
+            
+            group.appendChild(grid);
+            popup.appendChild(group);
+        });
+    }
+    
+    // Position the popup near the button
+    popup.style.display = 'block';
+    
+    const btnRect = buttonEl.getBoundingClientRect();
+    const container = popup.parentElement;
+    const containerRect = container.getBoundingClientRect();
+    
+    // Position below the button, aligned to its left edge
+    let left = btnRect.left - containerRect.left;
+    let top = btnRect.bottom - containerRect.top + 6;
+    
+    // Ensure popup doesn't overflow right side of viewport
+    const popupWidth = popup.offsetWidth;
+    const maxLeft = containerRect.width - popupWidth - 10;
+    if (left > maxLeft) left = Math.max(0, maxLeft);
+    
+    // If popup would go below the fixed piano, show it above the button instead
+    const fixedPiano = document.querySelector('.fixed-piano-container');
+    const pianoTop = fixedPiano ? fixedPiano.getBoundingClientRect().top : window.innerHeight;
+    const popupBottom = btnRect.bottom + popup.offsetHeight + 10;
+    
+    if (popupBottom > pianoTop) {
+        // Show above the button
+        top = btnRect.top - containerRect.top - popup.offsetHeight - 6;
+        // Move the arrow to the bottom
+        popup.classList.add('popup-above');
+    } else {
+        popup.classList.remove('popup-above');
+    }
+    
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+}
+
+// Function to play a chord (kept for backward compat)
 function playChord(root, type, octave) {
     try {
         // Get the chord notes
@@ -873,12 +954,12 @@ function playChord(root, type, octave) {
             return;
         }
         
-        // Validate notes - ensure they all have octave information
-        const validNotes = notes.filter(note => note.match(/^[A-G][#b]?\d+$/));
+        // Validate notes - ensure they are valid and have octave information
+        const validNotes = notes.filter(note => Tonal.Note.midi(note) !== null);
         
         if (validNotes.length !== notes.length) {
-            console.warn(`Some notes don't have octave information:`, 
-                notes.filter(note => !note.match(/^[A-G][#b]?\d+$/)));
+            console.warn(`Some notes are invalid or missing octave:`, 
+                notes.filter(note => Tonal.Note.midi(note) === null));
         }
         
         // Sort notes by pitch for better visualization
@@ -910,9 +991,6 @@ function playChord(root, type, octave) {
             updateFixedKeyboard(sortedNotes);
             
             console.log(`Playing chord: ${root}${type}`, sortedNotes);
-            
-            // Also show voicings for this chord
-            showVoicings(root, type, octave);
         } else {
             console.warn("Piano not loaded yet");
         }
@@ -1109,109 +1187,6 @@ function getVoicingRange(voicing) {
     }
 }
 
-// Function to show voicings for a chord
-function showVoicings(rootNote, chordType, baseOctave) {
-    const voicingsContainer = document.getElementById('voicingButtons');
-    voicingsContainer.innerHTML = '';
-    
-    // Get all voicings for the chord
-    const allVoicings = getAllVoicings(rootNote, chordType, baseOctave);
-    
-    if (allVoicings.length === 0) {
-        console.warn(`No voicings found for ${rootNote}${chordType} in octave ${baseOctave}`);
-        voicingsContainer.innerHTML = `<div class="no-voicings">No voicings available for ${rootNote}${chordType}</div>`;
-        return;
-    }
-    
-    // Group voicings by inversion
-    const groupedVoicings = {};
-    
-    allVoicings.forEach(voicing => {
-        const { notes, inversionIndex, type } = voicing;
-        
-        // Create a key for the inversion group
-        const groupKey = `${type}-${inversionIndex}`;
-        
-        if (!groupedVoicings[groupKey]) {
-            groupedVoicings[groupKey] = [];
-        }
-        
-        groupedVoicings[groupKey].push(voicing);
-    });
-    
-    // Create a section for each inversion group
-    Object.keys(groupedVoicings).sort().forEach(groupKey => {
-        const voicings = groupedVoicings[groupKey];
-        const [type, inversionIndex] = groupKey.split('-');
-        
-        // Create a container for this inversion group
-        const groupContainer = document.createElement('div');
-        groupContainer.className = 'inversion-group';
-        
-        // Add a title for the inversion group
-        const groupTitle = document.createElement('div');
-        groupTitle.className = 'inversion-title';
-        
-        // Format the inversion name
-        let inversionName = '';
-        if (type === 'close') {
-            inversionName = `Close Position - ${getInversionName(parseInt(inversionIndex))}`;
-        } else {
-            inversionName = `Open Position - ${getInversionName(parseInt(inversionIndex))}`;
-        }
-        
-        groupTitle.textContent = inversionName;
-        groupContainer.appendChild(groupTitle);
-        
-        // Create a grid for the voicings
-        const voicingGrid = document.createElement('div');
-        voicingGrid.className = 'voicing-grid';
-        
-        // Add buttons for each voicing in this group
-        voicings.forEach(voicing => {
-            const { notes, range } = voicing;
-            
-            // Validate notes - ensure they all have octave information
-            const validNotes = notes.filter(note => note.match(/^[A-G][#b]?\d+$/));
-            
-            if (validNotes.length !== notes.length) {
-                console.warn(`Skipping voicing with invalid notes: ${notes.join(', ')}`);
-                return;
-            }
-            
-            // Create button for this voicing
-            const button = document.createElement('button');
-            button.className = 'voicing-button';
-            
-            // Format notes for display
-            const formattedNotes = validNotes.map(note => {
-                // Format each note (e.g., "C4" -> "C<sub>4</sub>")
-                return note.replace(/([A-G][#b]?)(\d+)/, '$1<sub>$2</sub>');
-            }).join(' - ');
-            
-            // Set button content with notes and range
-            button.innerHTML = `
-                <div>${formattedNotes}</div>
-                <div style="font-size: 0.8em; color: #666;">Range: ${range} semitones</div>
-            `;
-            
-            // Add click event to play the voicing
-            button.addEventListener('click', function() {
-                // Log the notes we're about to play
-                console.log(`Clicked voicing button with notes: ${validNotes.join(', ')}`);
-                
-                // Play the voicing
-                playVoicing(validNotes);
-            });
-            
-            voicingGrid.appendChild(button);
-        });
-        
-        groupContainer.appendChild(voicingGrid);
-        voicingsContainer.appendChild(groupContainer);
-    });
-}
-
 // Function to play a voicing
 function playVoicing(notes) {
     try {
@@ -1224,15 +1199,14 @@ function playVoicing(notes) {
         // Log the notes we're trying to play
         console.log("Attempting to play voicing notes:", notes);
         
-        // Ensure all notes have octave information
+        // Ensure all notes are valid
         const validNotes = notes.filter(note => {
-            // Check if the note has an octave number
-            return note.match(/^[A-G][#b]?\d+$/);
+            return Tonal.Note.midi(note) !== null;
         });
         
         if (validNotes.length !== notes.length) {
-            console.warn("Some notes don't have octave information:", 
-                notes.filter(note => !note.match(/^[A-G][#b]?\d+$/)));
+            console.warn("Some notes are invalid:", 
+                notes.filter(note => Tonal.Note.midi(note) === null));
         }
         
         // Start audio context if not already started
