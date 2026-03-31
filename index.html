@@ -12,17 +12,14 @@
 </head>
 <body>
     <div class="container">
-        <h1 class="app-title">Chord Player</h1>
-        
         <div id="statusMessage" class="status-message loading" style="display: none;">
             Initializing...
         </div>
         
-        <div class="controls-container">
-            <!-- SVG Piano Keyboard -->
-            <div class="piano-container" id="piano-container"></div>
+        <!-- Header row: title + root/octave + note selector all on one line -->
+        <div class="header-row">
+            <h1 class="app-title">Chord Player</h1>
             
-            <!-- Root and Octave on the same line -->
             <div class="root-octave-container">
                 <div id="current-root">Root: C</div>
                 
@@ -36,6 +33,9 @@
                     </select>
                 </div>
             </div>
+            
+            <!-- SVG Piano Keyboard -->
+            <div class="piano-container" id="piano-container"></div>
         </div>
 
         <div class="section chord-section">

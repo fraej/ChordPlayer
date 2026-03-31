@@ -29,6 +29,19 @@ window.onload = function() {
         generateChords();
     });
     
+    // Resize handler for fixed keyboard (registered once)
+    let fixedKeyboardResizeTimer;
+    window.addEventListener('resize', function() {
+        clearTimeout(fixedKeyboardResizeTimer);
+        fixedKeyboardResizeTimer = setTimeout(function() {
+            const activeNotes = [...currentlyPlayingNotes];
+            initializeFixedKeyboard();
+            if (activeNotes.length > 0) {
+                updateFixedKeyboard(activeNotes);
+            }
+        }, 150);
+    });
+    
     // Initialize audio on page load
     loadPiano();
     
@@ -165,13 +178,7 @@ function initializeFixedKeyboard() {
                 allNotes
             };
             
-            // Add window resize handler to adjust keyboard size
-            window.addEventListener('resize', function() {
-                const newContainerWidth = window.innerWidth;
-                const newWhiteKeyWidth = newContainerWidth / 52;
-                const newTotalWidth = newWhiteKeyWidth * 52;
-                svg.setAttribute('viewBox', `0 0 ${newTotalWidth} 120`);
-            });
+            // Resize is handled by the single listener in window.onload
         }
     } catch (error) {
         console.error("Error initializing fixed keyboard:", error);
