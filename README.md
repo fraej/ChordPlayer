@@ -2,7 +2,7 @@
 
 An interactive web app for exploring chord structures, voicings, and inversions — played on a sampled grand piano right in your browser.
 
-![Screenshot](screenshot.png)
+![Screenshot](Screenshot.png)
 
 ## Features
 
