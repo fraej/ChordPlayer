@@ -1095,35 +1095,88 @@ function getAllVoicings(rootNote, chordType, baseOctave) {
         }
         
         // Generate close position voicings
+        // MIDI ceiling: if any note exceeds this, shift the whole voicing down
+        const MIDI_CEILING = 96; // C7 — keeps voicings in a comfortable range
+        
         for (let inversionIndex = 0; inversionIndex < chordNotes.length; inversionIndex++) {
-            // Create the voicing in the specified octave
-            const voicing = chordNotes.map((note, index) => {
-                // Calculate the octave for this note
-                let noteOctave = octave;
+            // Rotate the chord notes so the bass note of this inversion comes first
+            const rotated = [
+                ...chordNotes.slice(inversionIndex),
+                ...chordNotes.slice(0, inversionIndex)
+            ];
+            
+            // Build the voicing: each note must be higher than the previous
+            const voicing = [];
+            let currentOctave = octave;
+            let prevMidi = -Infinity;
+            
+            rotated.forEach((note) => {
+                let noteWithOctave = `${note}${currentOctave}`;
+                let midi = Tonal.Note.midi(noteWithOctave);
                 
-                // If the index is less than the inversion index, move to the next octave
-                if (index < inversionIndex) {
-                    noteOctave += 1;
+                // If this note isn't higher than the previous, bump up an octave
+                while (midi !== null && midi <= prevMidi) {
+                    currentOctave++;
+                    noteWithOctave = `${note}${currentOctave}`;
+                    midi = Tonal.Note.midi(noteWithOctave);
                 }
                 
-                return `${note}${noteOctave}`;
+                voicing.push(noteWithOctave);
+                if (midi !== null) prevMidi = midi;
             });
             
-            // Add the voicing
-            addVoicing(voicing, inversionIndex, 'close');
+            // If the highest note exceeds the ceiling, shift everything down an octave
+            const midiValues = voicing.map(n => Tonal.Note.midi(n)).filter(m => m !== null);
+            if (midiValues.length > 0 && Math.max(...midiValues) > MIDI_CEILING) {
+                // Shift all notes down one octave
+                const shifted = voicing.map(n => {
+                    const name = n.replace(/\d+$/, '');
+                    const oct = parseInt(n.match(/\d+$/)[0]);
+                    return `${name}${oct - 1}`;
+                });
+                addVoicing(shifted, inversionIndex, 'close');
+            } else {
+                addVoicing(voicing, inversionIndex, 'close');
+            }
         }
         
         // Generate open position voicings
         // For each inversion, try different octave combinations
         for (let inversionIndex = 0; inversionIndex < chordNotes.length; inversionIndex++) {
-            // Start with the close position voicing
-            const baseVoicing = chordNotes.map((note, index) => {
-                let noteOctave = octave;
-                if (index < inversionIndex) {
-                    noteOctave += 1;
+            // Build a properly-rotated close position base voicing (same logic as above)
+            const rotated = [
+                ...chordNotes.slice(inversionIndex),
+                ...chordNotes.slice(0, inversionIndex)
+            ];
+            
+            const baseVoicing = [];
+            let curOct = octave;
+            let pMidi = -Infinity;
+            
+            rotated.forEach((note) => {
+                let nwo = `${note}${curOct}`;
+                let m = Tonal.Note.midi(nwo);
+                while (m !== null && m <= pMidi) {
+                    curOct++;
+                    nwo = `${note}${curOct}`;
+                    m = Tonal.Note.midi(nwo);
                 }
-                return `${note}${noteOctave}`;
+                baseVoicing.push(nwo);
+                if (m !== null) pMidi = m;
             });
+            
+            // Helper: clamp a voicing so its highest note doesn't exceed MIDI_CEILING
+            function clampVoicing(v) {
+                const mids = v.map(n => Tonal.Note.midi(n)).filter(m => m !== null);
+                if (mids.length > 0 && Math.max(...mids) > MIDI_CEILING) {
+                    return v.map(n => {
+                        const nm = n.replace(/\d+$/, '');
+                        const o = parseInt(n.match(/\d+$/)[0]);
+                        return `${nm}${o - 1}`;
+                    });
+                }
+                return v;
+            }
             
             // Try different octave combinations
             // For each note (except the bass note), try moving it up an octave
@@ -1137,8 +1190,8 @@ function getAllVoicings(rootNote, chordType, baseOctave) {
                 const noteOctave = parseInt(note.match(/\d+$/)[0]);
                 openVoicing[i] = `${noteName}${noteOctave + 1}`;
                 
-                // Add the voicing
-                addVoicing(openVoicing, inversionIndex, 'open');
+                // Add the voicing (clamped)
+                addVoicing(clampVoicing(openVoicing), inversionIndex, 'open');
                 
                 // Try moving additional notes up an octave
                 for (let j = i + 1; j < baseVoicing.length; j++) {
@@ -1151,8 +1204,8 @@ function getAllVoicings(rootNote, chordType, baseOctave) {
                     const noteOctave2 = parseInt(note2.match(/\d+$/)[0]);
                     openVoicing2[j] = `${noteName2}${noteOctave2 + 1}`;
                     
-                    // Add the voicing
-                    addVoicing(openVoicing2, inversionIndex, 'open');
+                    // Add the voicing (clamped)
+                    addVoicing(clampVoicing(openVoicing2), inversionIndex, 'open');
                 }
             }
         }
