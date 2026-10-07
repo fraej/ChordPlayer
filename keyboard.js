@@ -154,7 +154,8 @@
     class PianoKeyboard {
         /**
          * @param {string|HTMLElement} container - Scrollable element (or its id) to draw into.
-         *   Its `--piano-height` CSS variable sets the height of the keys.
+         *   Its `--piano-height` CSS variable sets the height of the keys, and
+         *   `--piano-key-min` (if set) overrides `minWhiteKeyWidth`.
          * @param {Object} options
          * @param {number} [options.low=21] - Lowest MIDI note (A0)
          * @param {number} [options.high=108] - Highest MIDI note (C8)
@@ -191,9 +192,12 @@
             for (let midi = this.low; midi <= this.high; midi++) {
                 if (!isBlackKey(midi)) whiteCount++;
             }
-            const keyWidth = Math.max(this.minWhiteKeyWidth, this.container.clientWidth / whiteCount);
+            // CSS can override the key size per screen (e.g. wider keys on phones)
+            const style = getComputedStyle(this.container);
+            const minKeyWidth = parseFloat(style.getPropertyValue('--piano-key-min')) || this.minWhiteKeyWidth;
+            const keyWidth = Math.max(minKeyWidth, this.container.clientWidth / whiteCount);
             const width = keyWidth * whiteCount;
-            const height = parseFloat(getComputedStyle(this.container).getPropertyValue('--piano-height')) || 120;
+            const height = parseFloat(style.getPropertyValue('--piano-height')) || 120;
             const blackWidth = keyWidth * 0.6;
             const blackHeight = height * 0.62;
 

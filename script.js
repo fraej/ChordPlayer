@@ -1,9 +1,13 @@
 /**
  * Chord Player - app logic
  *
- * Wires the root picker, chord grid, voicing popup, chord info panel and 88-key
- * piano together and plays everything on a sampled grand piano (Tone.js).
+ * Wires the root picker, chord grid, voicings, chord info and 88-key piano
+ * together and plays everything on a sampled grand piano (Tone.js).
  * Music theory lives in theory.js and the keyboards in keyboard.js.
+ *
+ * Two layouts share the same elements:
+ *  - wide screens: voicings in a popup next to the chord, chord info in a sidebar
+ *  - phones/tablets: one sheet above the piano with Voicings and About tabs
  */
 (function () {
     'use strict';
@@ -24,7 +28,7 @@
         accidentals: 'sharp',   // how black-key roots are spelled: 'sharp' | 'flat'
         octave: 4,
         playStyle: 'block',     // 'block' | 'arpeggio'
-        showInfo: true,         // chord info sheet open on narrow screens
+        sheetTab: 'about',      // tab shown in the sheet on compact screens: 'voicings' | 'about'
         lastPlayed: null        // { chord, voicing }, for replay and the info panel
     };
 
@@ -36,15 +40,15 @@
         arpeggioTimers: []
     };
 
-    // Below this width the info panel is a sheet above the piano instead of a sidebar
-    const narrowScreen = window.matchMedia('(max-width: 999px)');
+    // Below this width the sheet replaces the voicing popup and the info sidebar
+    const compactLayout = window.matchMedia('(max-width: 999px)');
 
     let ui;
     let catalogue;              // chord types grouped for display (see theory.js)
     let chordsById;
     let rootKeyboard;
     let piano;
-    let popup = null;           // the open voicing popup: { button, chord, voicings }
+    let view = null;            // chord whose voicings are listed: { button, chord, voicings, container }
     let statusTimer;
 
     // ---------------------------------------------------------------------
@@ -77,6 +81,7 @@
         syncControls();
         renderChords();
         renderChordInfo();
+        syncSheetControls();
 
         if (window.Tone) {
             loadPiano();
@@ -105,8 +110,11 @@
             popupBody: popupElement.querySelector('.voicing-popup-body'),
             popupClose: popupElement.querySelector('.voicing-popup-close'),
             info: infoElement,
-            infoBody: infoElement.querySelector('.info-panel-body'),
+            infoSummary: infoElement.querySelector('.info-summary'),
+            infoBody: byId('sheetAbout'),
             infoClose: infoElement.querySelector('.info-panel-close'),
+            sheetTabs: [...infoElement.querySelectorAll('.sheet-tabs [data-tab]')],
+            sheetVoicings: byId('sheetVoicings'),
             infoToggle: byId('infoToggle'),
             status: byId('status'),
             dock: byId('dock'),
@@ -121,7 +129,7 @@
     function bindEvents() {
         ui.octave.addEventListener('change', () => {
             state.octave = Number(ui.octave.value);
-            closePopup();
+            closeChordView();
             saveSettings();
         });
         ui.accidentalButtons.forEach(button => {
@@ -131,38 +139,38 @@
             button.addEventListener('click', () => setPlayStyle(button.dataset.playStyle));
         });
         ui.filter.addEventListener('input', () => {
-            closePopup();
+            closeChordView();
             applyFilter();
         });
         ui.chordGroups.addEventListener('click', handleChordClick);
         ui.popupBody.addEventListener('click', handleVoicingClick);
-        ui.popupClose.addEventListener('click', () => closePopup({ restoreFocus: true }));
-        ui.replay.addEventListener('click', replay);
-        ui.infoToggle.addEventListener('click', () => setInfoOpen(!isInfoSheetOpen()));
-        ui.infoClose.addEventListener('click', () => {
-            setInfoOpen(false);
-            ui.infoToggle.focus();
+        ui.sheetVoicings.addEventListener('click', handleVoicingClick);
+        ui.popupClose.addEventListener('click', () => closeChordView({ restoreFocus: true }));
+        ui.infoClose.addEventListener('click', () => closeChordView({ restoreFocus: true }));
+        ui.sheetTabs.forEach(tab => {
+            tab.addEventListener('click', () => setSheetTab(tab.dataset.tab));
         });
+        ui.replay.addEventListener('click', replay);
+        ui.infoToggle.addEventListener('click', toggleSheet);
 
-        // Escape closes the popup first, then the info sheet. Clicks elsewhere close
-        // the popup, except on other chords (they switch it), the dock and the info panel.
         document.addEventListener('keydown', event => {
-            if (event.key !== 'Escape') return;
-            if (popup) {
-                closePopup({ restoreFocus: true });
-            } else if (isInfoSheetOpen()) {
-                setInfoOpen(false);
+            if (event.key === 'Escape' && view) {
+                closeChordView({ restoreFocus: true });
             }
         });
+        // On wide screens a click elsewhere closes the popup; other chords switch it,
+        // and clicks on the dock or the info sidebar leave it open
         document.addEventListener('pointerdown', event => {
             const target = event.target;
-            if (!popup || !(target instanceof Element)) return;
+            if (!view || isCompact() || !(target instanceof Element)) return;
             if ([ui.popup, ui.dock, ui.info].some(area => area.contains(target)) || target.closest('.chord-button')) return;
-            closePopup();
+            closeChordView();
         });
         window.addEventListener('resize', () => {
-            if (popup) positionPopup(popup.button);
+            if (view && !isCompact()) positionPopup(view.button);
         });
+        // Popup and sheet don't carry over between layouts (e.g. when a tablet rotates)
+        compactLayout.addEventListener('change', () => closeChordView());
 
         // Audio may only start during a user gesture, and a touch only counts once the
         // finger lifts (piano keys sound on touch-down), so retry on every gesture
@@ -170,20 +178,23 @@
         document.addEventListener('keydown', resumeAudio, true);
     }
 
-    // Keep the page padded so the fixed piano dock (and the info sheet on narrow
-    // screens) never covers the last chords
+    // Keep the page padded so the fixed piano dock (and the sheet, when it sits at
+    // the bottom) never covers the last chords
     function watchBottomSpace() {
         const observer = new ResizeObserver(updateBottomSpace);
         observer.observe(ui.dock);
         observer.observe(ui.info);
-        narrowScreen.addEventListener('change', updateBottomSpace);
+        window.addEventListener('resize', updateBottomSpace);
         updateBottomSpace();
     }
 
     function updateBottomSpace() {
         const style = document.documentElement.style;
         style.setProperty('--dock-height', `${ui.dock.offsetHeight}px`);
-        style.setProperty('--sheet-height', `${isInfoSheetOpen() ? ui.info.offsetHeight : 0}px`);
+        // In landscape the sheet is a side panel and the layout makes room for it instead
+        const sheet = isSheetOpen() ? ui.info.getBoundingClientRect() : null;
+        const atBottom = sheet && sheet.width >= window.innerWidth - 1;
+        style.setProperty('--sheet-height', `${atBottom ? Math.round(sheet.height) : 0}px`);
     }
 
     // ---------------------------------------------------------------------
@@ -192,10 +203,11 @@
 
     const noteNames = () => (state.accidentals === 'flat' ? ChordTheory.FLAT_NAMES : ChordTheory.SHARP_NAMES);
     const rootName = () => ChordTheory.pitchClassName(state.rootPc, state.accidentals);
+    const isCompact = () => compactLayout.matches;
 
     function setRoot(pc) {
         state.rootPc = pc;
-        closePopup();
+        closeChordView();
         syncControls();
         renderChords();
         saveSettings();
@@ -204,7 +216,7 @@
     function setAccidentals(accidentals) {
         if (accidentals === state.accidentals) return;
         state.accidentals = accidentals;
-        closePopup();
+        closeChordView();
         rootKeyboard.setNames(noteNames());
         syncControls();
         renderChords();
@@ -248,15 +260,15 @@
         if (saved.playStyle === 'block' || saved.playStyle === 'arpeggio') {
             state.playStyle = saved.playStyle;
         }
-        if (typeof saved.showInfo === 'boolean') {
-            state.showInfo = saved.showInfo;
+        if (saved.sheetTab === 'voicings' || saved.sheetTab === 'about') {
+            state.sheetTab = saved.sheetTab;
         }
     }
 
     function saveSettings() {
-        const { rootPc, accidentals, octave, playStyle, showInfo } = state;
+        const { rootPc, accidentals, octave, playStyle, sheetTab } = state;
         try {
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify({ rootPc, accidentals, octave, playStyle, showInfo }));
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify({ rootPc, accidentals, octave, playStyle, sheetTab }));
         } catch (error) {
             // Storage unavailable (e.g. private browsing): settings just won't persist
         }
@@ -332,18 +344,17 @@
         const chord = { entry, tonic, pitchClasses };
 
         play(chord, { notes: ChordTheory.closeVoicing(pitchClasses, 0, state.octave), type: 'close', inversion: 0 });
-        keepAboveInfoSheet(button);
 
-        if (popup && popup.button === button) {
-            closePopup(); // a second click on the same chord hides its voicings
+        if (view && view.button === button) {
+            closeChordView(); // a second click on the same chord hides its voicings
         } else {
-            // Keyboard activation (detail 0) moves focus into the popup
-            openPopup(button, chord, { focus: event.detail === 0 });
+            // Keyboard activation (detail 0) moves focus into the popup or sheet
+            openChordView(button, chord, { focus: event.detail === 0 });
         }
     }
 
     // ---------------------------------------------------------------------
-    // Voicing popup
+    // Voicings: popup (wide screens) or sheet (compact screens)
     // ---------------------------------------------------------------------
 
     // "Close · Root position", "Open · 2nd inversion"
@@ -351,9 +362,59 @@
         return `${type === 'close' ? 'Close' : 'Open'} · ${ChordTheory.inversionName(inversion)}`;
     }
 
-    function openPopup(button, chord, { focus = false } = {}) {
-        closePopup();
+    /**
+     * List a chord's voicings: in the popup next to `button` on wide screens, in
+     * the sheet on compact ones. `button` may be null when the sheet is reopened
+     * for a chord that's no longer on screen.
+     */
+    function openChordView(button, chord, { focus = false } = {}) {
+        closeChordView();
+        const compact = isCompact();
+        const container = compact ? ui.sheetVoicings : ui.popupBody;
+        const playing = state.lastPlayed && state.lastPlayed.chord === chord ? state.lastPlayed.voicing : null;
+        const voicings = renderVoicingList(container, chord, playing);
+        view = { button, chord, voicings, container };
 
+        if (button) {
+            button.classList.add('chord-active');
+            button.setAttribute('aria-expanded', 'true');
+        }
+        if (compact) {
+            document.body.classList.add('sheet-open');
+            syncSheetControls();
+            updateBottomSpace();
+            if (button) keepClearOfSheet(button);
+        } else {
+            ui.popupTitle.textContent = `${ChordTheory.chordSymbol(chord.tonic, chord.entry)} voicings`;
+            ui.popup.hidden = false;
+            positionPopup(button);
+        }
+
+        if (focus) {
+            const target = compact && state.sheetTab === 'about'
+                ? ui.sheetTabs.find(tab => tab.dataset.tab === 'about')
+                : container.querySelector('.active-voicing, .voicing-button');
+            if (target) target.focus();
+        }
+    }
+
+    function closeChordView({ restoreFocus = false } = {}) {
+        if (!view) return;
+        const { button, container } = view;
+        view = null;
+        container.replaceChildren();
+        ui.popup.hidden = true;
+        document.body.classList.remove('sheet-open');
+        syncSheetControls();
+        updateBottomSpace();
+        if (button) {
+            button.classList.remove('chord-active');
+            button.setAttribute('aria-expanded', 'false');
+            if (restoreFocus && button.isConnected) button.focus();
+        }
+    }
+
+    function renderVoicingList(container, chord, playing) {
         const voicings = [];
         const sections = ChordTheory.voicingGroups(chord.pitchClasses, state.octave).map(group => el('div', 'inversion-group',
             el('div', 'inversion-title', voicingLabel(group)),
@@ -362,23 +423,15 @@
                 return createVoicingButton(voicing, index);
             }))
         ));
-        if (sections.length === 0) {
-            sections.push(el('p', 'voicing-empty', 'No voicings available'));
-        }
-        ui.popupTitle.textContent = `${ChordTheory.chordSymbol(chord.tonic, chord.entry)} voicings`;
-        ui.popupBody.replaceChildren(...sections);
+        container.replaceChildren(...(sections.length > 0 ? sections : [el('p', 'voicing-empty', 'No voicings available')]));
+        container.scrollTop = 0;
 
-        // The chord has just been played in close root position: the first voicing
-        const first = ui.popupBody.querySelector('.voicing-button');
-        if (first) first.classList.add('active-voicing');
-
-        popup = { button, chord, voicings };
-        button.classList.add('chord-active');
-        button.setAttribute('aria-expanded', 'true');
-        ui.popup.hidden = false;
-        ui.popupBody.scrollTop = 0;
-        positionPopup(button);
-        if (focus && first) first.focus();
+        // Mark the voicing that's sounding (the close root position after a chord click)
+        const sounding = playing ? playing.notes.join() : null;
+        const index = sounding === null ? 0 : voicings.findIndex(voicing => voicing.notes.join() === sounding);
+        const active = container.querySelector(`.voicing-button[data-index="${index}"]`);
+        if (active) active.classList.add('active-voicing');
+        return voicings;
     }
 
     function createVoicingButton(voicing, index) {
@@ -399,39 +452,25 @@
 
     function handleVoicingClick(event) {
         const button = event.target.closest('.voicing-button');
-        if (!button || !popup) return;
-        ui.popupBody.querySelectorAll('.active-voicing').forEach(active => active.classList.remove('active-voicing'));
+        if (!button || !view) return;
+        view.container.querySelectorAll('.active-voicing').forEach(active => active.classList.remove('active-voicing'));
         button.classList.add('active-voicing');
-        play(popup.chord, popup.voicings[Number(button.dataset.index)]);
-    }
-
-    function closePopup({ restoreFocus = false } = {}) {
-        if (!popup) return;
-        const { button } = popup;
-        popup = null;
-        ui.popup.hidden = true;
-        ui.popupBody.replaceChildren();
-        button.classList.remove('chord-active');
-        button.setAttribute('aria-expanded', 'false');
-        if (restoreFocus && button.isConnected) button.focus();
+        play(view.chord, view.voicings[Number(button.dataset.index)]);
     }
 
     // Place the popup below its chord button, or above it when there's more room
-    // there, keeping it clear of the piano dock and the info panel.
+    // there, keeping it clear of the piano dock and the info sidebar.
     function positionPopup(button) {
         const element = ui.popup;
         const host = element.offsetParent; // the positioned .container
-        if (!host) return;
+        if (!host || !button) return;
         const hostRect = host.getBoundingClientRect();
         const anchor = button.getBoundingClientRect();
         const gap = 8;
         const margin = 8;
 
         element.style.maxHeight = '';
-        const visibleBottom = Math.min(
-            window.innerHeight,
-            ui.dock.getBoundingClientRect().top,
-            isInfoSheetOpen() ? ui.info.getBoundingClientRect().top : Infinity);
+        const visibleBottom = Math.min(window.innerHeight, ui.dock.getBoundingClientRect().top);
         const spaceBelow = visibleBottom - anchor.bottom - gap - margin;
         const spaceAbove = anchor.top - gap - margin;
         const naturalHeight = element.offsetHeight;
@@ -457,41 +496,58 @@
     }
 
     // ---------------------------------------------------------------------
-    // Chord info panel
+    // Sheet (compact screens)
     // ---------------------------------------------------------------------
 
-    function isInfoSheetOpen() {
-        return narrowScreen.matches && document.body.classList.contains('info-open');
+    function isSheetOpen() {
+        return isCompact() && document.body.classList.contains('sheet-open');
     }
 
-    // The info sheet can open over the chord that was just tapped: scroll that chord
-    // to the top so it stays visible and its voicing popup has room below it
-    function keepAboveInfoSheet(button) {
-        if (!isInfoSheetOpen()) return;
+    // The Details button in the dock: reopen the sheet for whatever played last
+    function toggleSheet() {
+        if (isSheetOpen()) {
+            closeChordView();
+        } else if (state.lastPlayed) {
+            const { chord } = state.lastPlayed;
+            const button = chord.tonic === rootName()
+                ? ui.chordGroups.querySelector(`.chord-button[data-id="${CSS.escape(chord.entry.id)}"]`)
+                : null;
+            openChordView(button, chord);
+        }
+    }
+
+    function setSheetTab(tab) {
+        state.sheetTab = tab;
+        saveSettings();
+        syncSheetControls();
+    }
+
+    function syncSheetControls() {
+        ui.info.dataset.tab = state.sheetTab;
+        ui.sheetTabs.forEach(tab => tab.setAttribute('aria-pressed', String(tab.dataset.tab === state.sheetTab)));
+        ui.infoToggle.disabled = !state.lastPlayed;
+        ui.infoToggle.setAttribute('aria-expanded', String(isSheetOpen()));
+    }
+
+    // Opening the sheet can cover the chord that was just tapped (or, in landscape,
+    // reflow it out of view): scroll that chord to the top so it stays visible
+    function keepClearOfSheet(button) {
+        const sheet = ui.info.getBoundingClientRect();
         const rect = button.getBoundingClientRect();
-        if (rect.bottom > ui.info.getBoundingClientRect().top - 8) {
+        const sheetAtBottom = sheet.width >= window.innerWidth - 1;
+        const visibleBottom = Math.min(ui.dock.getBoundingClientRect().top, sheetAtBottom ? sheet.top : Infinity) - 8;
+        if (rect.top < 8 || rect.bottom > visibleBottom) {
             window.scrollBy(0, rect.top - 16);
         }
     }
 
-    function setInfoOpen(open) {
-        state.showInfo = open;
-        saveSettings();
-        syncInfoSheet();
-    }
-
-    // On narrow screens the panel is a sheet above the piano; it shows once something
-    // has been played, unless the user closed it
-    function syncInfoSheet() {
-        const open = state.showInfo && Boolean(state.lastPlayed);
-        document.body.classList.toggle('info-open', open);
-        ui.infoToggle.disabled = !state.lastPlayed;
-        ui.infoToggle.setAttribute('aria-expanded', String(open));
-        updateBottomSpace();
-    }
+    // ---------------------------------------------------------------------
+    // Chord info (sidebar on wide screens, About tab on compact ones)
+    // ---------------------------------------------------------------------
 
     function renderChordInfo() {
         if (!state.lastPlayed) {
+            ui.infoSummary.replaceChildren();
             ui.infoBody.replaceChildren(el('p', 'info-muted',
                 'Play a chord to see how it’s built, which keys it belongs to and which scales fit over it.'));
             return;
@@ -500,11 +556,13 @@
         const about = ChordTheory.describeChord(chord.entry, chord.tonic, state.accidentals);
         const facts = ChordTheory.describeVoicing(chord.entry, chord.tonic, voicing);
 
-        ui.infoBody.replaceChildren(
+        ui.infoSummary.replaceChildren(
             el('div', 'info-heading',
                 el('span', 'info-symbol', about.symbol),
                 el('span', 'info-family', about.family)),
-            chord.entry.name ? el('p', 'info-name', chord.entry.name) : null,
+            chord.entry.name ? el('p', 'info-name', chord.entry.name) : null);
+
+        ui.infoBody.replaceChildren(
             about.aliases.length > 0 ? el('p', 'info-aliases', `Also written ${about.aliases.slice(0, 5).join(' · ')}`) : null,
             el('p', 'info-recipe', about.recipe),
             about.description ? el('p', 'info-description', about.description) : null,
@@ -568,7 +626,7 @@
         state.lastPlayed = { chord, voicing };
         showNowPlaying(chord, voicing);
         renderChordInfo();
-        syncInfoSheet();
+        syncSheetControls();
         piano.highlight(voicing.notes.map(note => ({
             midi: ChordTheory.midi(note),
             label: ChordTheory.noteParts(note).name,

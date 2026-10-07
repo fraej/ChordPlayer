@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="Explore chords, voicings and inversions on a sampled grand piano.">
     <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
     <title>Chord Player</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,17 +19,12 @@
 </head>
 <body>
     <main class="container">
-        <!-- Header: title, root/spelling/octave controls and the root picker -->
+        <!-- Header: title, root/octave controls, and the root picker with its ♯/♭ switch -->
         <header class="header-row">
             <h1 class="app-title">Chord Player</h1>
 
             <div class="controls">
                 <div class="root-badge">Root: <span id="rootName">C</span></div>
-
-                <div class="segmented" role="group" aria-label="Spell black-key roots with">
-                    <button type="button" data-accidentals="sharp" aria-pressed="true" title="Sharps (C♯, D♯ …)" aria-label="Sharps">♯</button>
-                    <button type="button" data-accidentals="flat" aria-pressed="false" title="Flats (D♭, E♭ …)" aria-label="Flats">♭</button>
-                </div>
 
                 <label class="octave-control">
                     <span>Octave</span>
@@ -40,30 +37,45 @@
                 </label>
             </div>
 
-            <div class="root-picker" id="rootKeyboard"></div>
+            <div class="root-area">
+                <div class="segmented accidentals" role="group" aria-label="Spell black-key roots with">
+                    <button type="button" data-accidentals="sharp" aria-pressed="true" title="Sharps (C♯, D♯ …)" aria-label="Sharps">♯</button>
+                    <button type="button" data-accidentals="flat" aria-pressed="false" title="Flats (D♭, E♭ …)" aria-label="Flats">♭</button>
+                </div>
+                <div class="root-picker" id="rootKeyboard"></div>
+            </div>
         </header>
 
         <section id="chordSection" class="chord-section" aria-labelledby="chordsHeading">
             <div class="section-header">
                 <h2 id="chordsHeading">Chords</h2>
                 <input type="search" id="chordFilter" class="chord-filter"
-                       placeholder="Filter chords: m7, sus, ♭9, minor…" aria-label="Filter chords"
+                       placeholder="Filter: m7, sus, ♭9, minor…" aria-label="Filter chords"
                        autocomplete="off" spellcheck="false">
             </div>
             <div id="chordGroups"></div>
             <p id="noMatches" class="no-matches" hidden></p>
         </section>
 
-        <!-- What's playing, explained: a sidebar on wide screens, a sheet above the piano otherwise -->
-        <aside id="chordInfo" class="info-panel" aria-labelledby="chordInfoTitle">
+        <!-- What's playing, explained. Wide screens: a sidebar next to the chords.
+             Phones and tablets: a sheet above the piano that also lists the voicings. -->
+        <aside id="chordInfo" class="info-panel" aria-labelledby="chordInfoTitle" data-tab="about">
             <div class="info-panel-header">
-                <h2 id="chordInfoTitle" class="info-panel-title">About this chord</h2>
-                <button type="button" class="info-panel-close" aria-label="Hide chord info" title="Hide (Esc)">✕</button>
+                <div class="info-panel-heading">
+                    <h2 id="chordInfoTitle" class="info-panel-title">About this chord</h2>
+                    <div class="info-summary"></div>
+                </div>
+                <button type="button" class="info-panel-close" aria-label="Close" title="Close (Esc)">✕</button>
             </div>
-            <div class="info-panel-body"></div>
+            <div class="segmented sheet-tabs" role="group" aria-label="Show">
+                <button type="button" data-tab="voicings" aria-controls="sheetVoicings" aria-pressed="false">Voicings</button>
+                <button type="button" data-tab="about" aria-controls="sheetAbout" aria-pressed="true">About</button>
+            </div>
+            <div id="sheetVoicings" class="sheet-voicings"></div>
+            <div id="sheetAbout" class="info-panel-body"></div>
         </aside>
 
-        <!-- Floating voicing popup (opens next to the clicked chord button) -->
+        <!-- Floating voicing popup on wide screens (opens next to the clicked chord button) -->
         <div id="voicingPopup" class="voicing-popup" role="dialog" aria-labelledby="voicingTitle" hidden>
             <div class="voicing-popup-header">
                 <span id="voicingTitle" class="voicing-popup-title"></span>
@@ -87,12 +99,18 @@
             </div>
             <div id="nowNotes" class="now-notes"></div>
             <div class="segmented play-style" role="group" aria-label="Play chords as">
-                <button type="button" data-play-style="block" aria-pressed="true" title="Play all notes together">Block</button>
-                <button type="button" data-play-style="arpeggio" aria-pressed="false" title="Play the notes one after another">Arpeggio</button>
+                <button type="button" data-play-style="block" aria-pressed="true" aria-label="Block" title="Play all notes together">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="9" cy="19.5" rx="3.6" ry="2.5" transform="rotate(-20 9 19.5)"/><ellipse cx="9" cy="14" rx="3.6" ry="2.5" transform="rotate(-20 9 14)"/><ellipse cx="9" cy="8.5" rx="3.6" ry="2.5" transform="rotate(-20 9 8.5)"/><rect x="11.6" y="2" width="1.5" height="17"/></svg>
+                    <span class="play-style-label">Block</span>
+                </button>
+                <button type="button" data-play-style="arpeggio" aria-pressed="false" aria-label="Arpeggio" title="Play the notes one after another">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="4.6" cy="20" rx="3.2" ry="2.3" transform="rotate(-20 4.6 20)"/><ellipse cx="11.6" cy="15.5" rx="3.2" ry="2.3" transform="rotate(-20 11.6 15.5)"/><ellipse cx="18.6" cy="11" rx="3.2" ry="2.3" transform="rotate(-20 18.6 11)"/><rect x="6.8" y="3" width="1.4" height="16.5"/><rect x="13.8" y="3" width="1.4" height="12"/><rect x="20.8" y="3" width="1.4" height="7.5"/><rect x="6.8" y="2.2" width="15.4" height="2.4"/></svg>
+                    <span class="play-style-label">Arpeggio</span>
+                </button>
             </div>
-            <button type="button" id="infoToggle" class="info-toggle" aria-controls="chordInfo" aria-expanded="false" title="About this chord" disabled>
+            <button type="button" id="infoToggle" class="info-toggle" aria-controls="chordInfo" aria-expanded="false" aria-label="Details" title="Voicings and chord info" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm-1-9h2v6h-2zm0-4h2v2h-2z"/></svg>
-                <span class="info-toggle-label">Info</span>
+                <span class="info-toggle-label">Details</span>
             </button>
         </div>
         <div id="piano" class="piano-scroll"></div>

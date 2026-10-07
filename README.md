@@ -4,6 +4,8 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 
 ![Screenshot](Screenshot.png)
 
+<p align="center"><img src="Screenshot-phone.png" alt="Chord Player on a phone, with the chord sheet open" width="280"></p>
+
 ## Features
 
 - **Root selection** via a compact piano keyboard (click it, or Tab to it and use the arrow keys).
@@ -20,12 +22,13 @@ An interactive web app for exploring chord structures, voicings, and inversions 
   - the major and minor keys it belongs to, as Roman numerals (V7 in F, vii°7 in C♯ harmonic minor…);
   - scales that fit over it (C Mixolydian, C Lydian dominant…).
 
-  It's a sidebar on wide screens and a sheet above the piano on phones and tablets (toggle it with the ⓘ button).
+  It's a sidebar on wide screens, and the About tab of the chord sheet on phones and tablets.
 - **Block or arpeggio** playback.
 - **Playable 88-key keyboard** fixed at the bottom: highlights the sounding notes (root in red), labels them, scrolls to them, and plays notes when you click, drag across or tap the keys.
 - **Smart pitch clamping** — voicings are moved down whole octaves until they sit at or below C7, so high inversions of extended chords don't get shrill.
-- **Remembers your settings** (root, ♯/♭, octave, play style, info sheet open or closed) between visits.
-- **Dark mode** that follows your system setting, and a layout that works down to phone size.
+- **Made for phones too** — tapping a chord opens one sheet above the piano with **Voicings** and **About** tabs (a side panel in landscape), instead of popups. The header fits in two rows, buttons are finger-sized, piano keys get wider and scroll to whatever plays, and the layout keeps clear of the iPhone notch and home indicator.
+- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab) between visits.
+- **Dark mode** that follows your system setting.
 - **Loading progress** for the piano samples, with a clear message if they can't be loaded.
 
 ## Tech Stack
@@ -67,7 +70,8 @@ Then open `http://localhost:8080/` in your browser.
 1. Wait for the "Piano ready" message (chords can be browsed while it loads).
 2. Pick a root note on the small keyboard (highlighted in red). Use ♯/♭ to choose how black-key roots are spelled.
 3. Click a chord to hear it. Its voicings open in a popup next to it; click one to hear that voicing. The chord info panel explains whatever is playing.
-4. Close the popup with ✕, <kbd>Esc</kbd>, or by clicking elsewhere. Clicking another chord switches straight to it.
+   On phones and tablets, the voicings and the chord info share a sheet above the piano: switch between them with the **Voicings** / **About** tabs, and reopen the sheet with the ⓘ button.
+4. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again (on wide screens, clicking elsewhere works too). Clicking another chord switches straight to it.
 5. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
 6. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
 
@@ -78,14 +82,14 @@ index.html      Main page
 styles.css      Styling, layout, dark mode
 theory.js       Music theory: chord catalogue, spelling, voicings, chord info (no DOM)
 keyboard.js     SVG keyboard components: RootKeyboard and PianoKeyboard
-script.js       App logic: UI wiring, voicing popup, chord info panel, audio, settings
+script.js       App logic: UI wiring, voicing popup / sheet, chord info, audio, settings
 LICENSE         GPLv3
 ```
 
 ## Keyboard Components
 
 - **RootKeyboard** — one-octave layout (7 white + 5 black keys) used for root selection. Works as an accessible radio group (Tab, arrow keys, Home/End) and relabels its black keys for sharps or flats. Scales via CSS.
-- **PianoKeyboard** — 88 keys (A0–C8) that fill the width of the window. Keys never get narrower than 18px; on smaller screens the keyboard scrolls instead and brings the sounding notes into view. Redraws itself when its width changes.
+- **PianoKeyboard** — 88 keys (A0–C8) that fill the width of the window. Keys never get narrower than 18px (26px on phones, set by the `--piano-key-min` CSS variable); on smaller screens the keyboard scrolls instead and brings the sounding notes into view. Redraws itself when its width changes.
 
 ## Audio
 
