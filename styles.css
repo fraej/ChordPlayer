@@ -53,6 +53,7 @@
     --status-error-text: #721c24;
 
     --dock-height: 170px; /* kept in sync with the real dock height by script.js */
+    --sheet-height: 0px;  /* height of the open info sheet on narrow screens (script.js) */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -115,8 +116,8 @@ body {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     background: var(--page);
     color: var(--text);
-    /* Room for the fixed piano dock */
-    padding-bottom: calc(var(--dock-height) + 16px);
+    /* Room for the fixed piano dock (and the info sheet on narrow screens) */
+    padding-bottom: calc(var(--dock-height) + var(--sheet-height) + 16px);
 }
 
 button, input, select {
@@ -139,6 +140,27 @@ select, .chord-filter {
 .container {
     position: relative; /* anchors the voicing popup */
     padding: 16px 20px;
+}
+
+/* Wide screens: chord grid on the left, chord info sidebar on the right */
+@media (min-width: 1000px) {
+    .container {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        grid-template-areas:
+            "header header"
+            "chords info";
+        column-gap: 16px;
+        align-items: start;
+    }
+
+    .header-row {
+        grid-area: header;
+    }
+
+    .chord-section {
+        grid-area: chords;
+    }
 }
 
 /* ------------------------------------------------------------------
@@ -561,6 +583,245 @@ select, .chord-filter {
 }
 
 /* ------------------------------------------------------------------
+   Chord info panel: sidebar on wide screens, sheet above the piano otherwise
+   ------------------------------------------------------------------ */
+.info-panel {
+    padding: 0 14px 14px;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+@media (min-width: 1000px) {
+    .info-panel {
+        grid-area: info;
+        position: sticky;
+        top: 12px;
+        max-height: calc(100vh - var(--dock-height) - 24px);
+        overflow-y: auto;
+    }
+
+    /* The sidebar is always visible, so there's nothing to close */
+    .info-panel-close {
+        display: none;
+    }
+}
+
+@media (max-width: 999px) {
+    .info-panel {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: var(--dock-height);
+        z-index: 900;
+        display: none;
+        max-height: min(34vh, 320px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        border-bottom: none;
+        border-radius: 12px 12px 0 0;
+        box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    body.info-open .info-panel {
+        display: block;
+    }
+}
+
+/* Stays put while the panel scrolls, so the close button is always reachable */
+.info-panel-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 0 4px;
+    background: var(--surface);
+}
+
+.info-panel-title {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.info-panel-close {
+    margin: 0;
+    padding: 2px 6px;
+    font-size: 1em;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.info-panel-close:hover {
+    color: var(--text);
+    background: var(--hover);
+}
+
+.info-heading {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-top: 4px;
+}
+
+.info-symbol {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.info-family {
+    padding: 2px 9px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--primary-strong);
+    background: var(--primary-soft);
+    border-radius: 999px;
+}
+
+.info-name,
+.info-aliases {
+    margin: 2px 0 0;
+    color: var(--muted);
+}
+
+.info-aliases {
+    font-size: 0.8rem;
+}
+
+.info-recipe {
+    margin: 10px 0 0;
+    font-weight: 600;
+}
+
+.info-description {
+    margin: 4px 0 0;
+}
+
+.info-section {
+    margin-top: 14px;
+}
+
+.info-section-title {
+    margin: 0 0 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--primary-strong);
+}
+
+.info-notes {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.info-notes th,
+.info-notes td {
+    padding: 3px 8px 3px 0;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.info-notes tr:last-child th,
+.info-notes tr:last-child td {
+    border-bottom: none;
+}
+
+.info-notes th {
+    width: 2.6em;
+    font-weight: 700;
+}
+
+.info-notes .root th {
+    color: var(--root);
+}
+
+.info-degree {
+    width: 2.6em;
+    font-weight: 600;
+    color: var(--green);
+}
+
+.info-interval {
+    color: var(--muted);
+}
+
+.info-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 3px 12px;
+    margin: 0;
+}
+
+.info-facts dt {
+    color: var(--muted);
+}
+
+.info-facts dd {
+    margin: 0;
+}
+
+.info-facts abbr {
+    text-decoration: none;
+    border-bottom: 1px dotted var(--muted);
+    cursor: help;
+}
+
+.info-key-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.info-key-row + .info-key-row {
+    margin-top: 6px;
+}
+
+.info-key-label {
+    flex: 0 0 3.2em;
+    color: var(--muted);
+}
+
+.info-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.info-chip {
+    padding: 1px 7px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    background: var(--primary-soft);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.info-chip small {
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+.info-muted {
+    margin: 0;
+    color: var(--muted);
+}
+
+/* ------------------------------------------------------------------
    Status toast
    ------------------------------------------------------------------ */
 .status {
@@ -722,6 +983,43 @@ select, .chord-filter {
     margin-left: auto;
 }
 
+/* Opens the chord info sheet (narrow screens only) */
+.info-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 34px;
+    margin: 0;
+    padding: 4px 10px;
+    color: var(--primary-strong);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.info-toggle svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+.info-toggle[aria-expanded="true"] {
+    background: var(--primary-soft);
+}
+
+.info-toggle:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* Wide screens show the info as a sidebar, so the toggle isn't needed */
+@media (min-width: 1000px) {
+    .info-toggle {
+        display: none;
+    }
+}
+
 /* 88-key piano (keyboard.js → PianoKeyboard) */
 .piano-scroll {
     --piano-height: 120px;
@@ -861,6 +1159,15 @@ select, .chord-filter {
 
     .chord-filter {
         flex-basis: 100%;
+    }
+
+    /* Icon only, to leave room for the chord name */
+    .info-toggle {
+        padding: 4px 7px;
+    }
+
+    .info-toggle-label {
+        display: none;
     }
 }
 

@@ -13,10 +13,18 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 - **Voicings & inversions** — close and open position voicings grouped by inversion in a popup next to the chord; click any of them to hear it.
 - **Correct spelling everywhere** — notes are shown as they're spelled in the chord (C7 shows B♭, not A♯), with ♯/♭ symbols and scale degrees.
 - **Now-playing bar** — the chord's name, the voicing, and each note with its degree (1 3 5 ♭7), plus a replay button.
+- **Chord info panel** — whenever a chord plays, a panel explains it:
+  - what kind of chord it is, how it's built ("major triad + minor 7th") and what it sounds like or is used for;
+  - each note with its degree and interval name ("B♭ · ♭7 · minor seventh"), plus other ways to write the chord;
+  - the voicing being played: inversion, bass note and slash-chord name (C7/E), figured bass (6/5), span and the steps between the notes;
+  - the major and minor keys it belongs to, as Roman numerals (V7 in F, vii°7 in C♯ harmonic minor…);
+  - scales that fit over it (C Mixolydian, C Lydian dominant…).
+
+  It's a sidebar on wide screens and a sheet above the piano on phones and tablets (toggle it with the ⓘ button).
 - **Block or arpeggio** playback.
 - **Playable 88-key keyboard** fixed at the bottom: highlights the sounding notes (root in red), labels them, scrolls to them, and plays notes when you click, drag across or tap the keys.
 - **Smart pitch clamping** — voicings are moved down whole octaves until they sit at or below C7, so high inversions of extended chords don't get shrill.
-- **Remembers your settings** (root, ♯/♭, octave, play style) between visits.
+- **Remembers your settings** (root, ♯/♭, octave, play style, info sheet open or closed) between visits.
 - **Dark mode** that follows your system setting, and a layout that works down to phone size.
 - **Loading progress** for the piano samples, with a clear message if they can't be loaded.
 
@@ -58,7 +66,7 @@ Then open `http://localhost:8080/` in your browser.
 
 1. Wait for the "Piano ready" message (chords can be browsed while it loads).
 2. Pick a root note on the small keyboard (highlighted in red). Use ♯/♭ to choose how black-key roots are spelled.
-3. Click a chord to hear it. Its voicings open in a popup next to it; click one to hear that voicing.
+3. Click a chord to hear it. Its voicings open in a popup next to it; click one to hear that voicing. The chord info panel explains whatever is playing.
 4. Close the popup with ✕, <kbd>Esc</kbd>, or by clicking elsewhere. Clicking another chord switches straight to it.
 5. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
 6. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
@@ -68,9 +76,9 @@ Then open `http://localhost:8080/` in your browser.
 ```
 index.html      Main page
 styles.css      Styling, layout, dark mode
-theory.js       Music theory: chord catalogue, spelling, voicing generation (no DOM)
+theory.js       Music theory: chord catalogue, spelling, voicings, chord info (no DOM)
 keyboard.js     SVG keyboard components: RootKeyboard and PianoKeyboard
-script.js       App logic: UI wiring, voicing popup, audio, settings
+script.js       App logic: UI wiring, voicing popup, chord info panel, audio, settings
 LICENSE         GPLv3
 ```
 
@@ -89,6 +97,7 @@ Uses `Tone.Sampler` with a sparse sample map (A, C, D♯, F♯ across octaves) t
 - `theory.js` has no DOM access and also exports itself via `module.exports`, so voicing logic can be tested in Node (load Tonal's browser build into `globalThis.Tonal` first).
 - Chords are looked up with `Tonal.Chord.getChord(type, tonic)` rather than by joining strings, which Tonal can misread (for example "C" + "b9sus" parses as a C♭ chord).
 - Voicing generation uses a MIDI-ceiling approach (`MIDI 96 = C7`) to keep inversions of extended chords in a comfortable range.
+- Key membership (the "In keys" list) checks that every chord tone sits on its own scale degree, not just that the pitches are in the scale. That keeps symmetrical chords honest: C°7 shows up as vii°7 in C♯/D♭ harmonic minor, not as a chord on the 6th degree of E minor. Altered dominants (7♯9, 7alt) therefore belong to no key; the panel points to their scales instead.
 
 ## Potential Improvements
 

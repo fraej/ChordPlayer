@@ -43,7 +43,7 @@
             <div class="root-picker" id="rootKeyboard"></div>
         </header>
 
-        <section class="chord-section" aria-labelledby="chordsHeading">
+        <section id="chordSection" class="chord-section" aria-labelledby="chordsHeading">
             <div class="section-header">
                 <h2 id="chordsHeading">Chords</h2>
                 <input type="search" id="chordFilter" class="chord-filter"
@@ -53,6 +53,15 @@
             <div id="chordGroups"></div>
             <p id="noMatches" class="no-matches" hidden></p>
         </section>
+
+        <!-- What's playing, explained: a sidebar on wide screens, a sheet above the piano otherwise -->
+        <aside id="chordInfo" class="info-panel" aria-labelledby="chordInfoTitle">
+            <div class="info-panel-header">
+                <h2 id="chordInfoTitle" class="info-panel-title">About this chord</h2>
+                <button type="button" class="info-panel-close" aria-label="Hide chord info" title="Hide (Esc)">✕</button>
+            </div>
+            <div class="info-panel-body"></div>
+        </aside>
 
         <!-- Floating voicing popup (opens next to the clicked chord button) -->
         <div id="voicingPopup" class="voicing-popup" role="dialog" aria-labelledby="voicingTitle" hidden>
@@ -81,6 +90,10 @@
                 <button type="button" data-play-style="block" aria-pressed="true" title="Play all notes together">Block</button>
                 <button type="button" data-play-style="arpeggio" aria-pressed="false" title="Play the notes one after another">Arpeggio</button>
             </div>
+            <button type="button" id="infoToggle" class="info-toggle" aria-controls="chordInfo" aria-expanded="false" title="About this chord" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm-1-9h2v6h-2zm0-4h2v2h-2z"/></svg>
+                <span class="info-toggle-label">Info</span>
+            </button>
         </div>
         <div id="piano" class="piano-scroll"></div>
     </div>
