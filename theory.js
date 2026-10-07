@@ -12,6 +12,10 @@
         throw new Error('ChordTheory needs Tonal to be loaded first');
     }
 
+    // Words come from I18n (i18n.js) when it's loaded; without it, the keys show
+    const t = (key, vars) => (root.I18n ? root.I18n.t(key, vars) : key);
+    const hasText = key => Boolean(root.I18n && root.I18n.has(key));
+
     const SHARP_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
     const FLAT_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
@@ -22,13 +26,13 @@
     const MIDI_FLOOR = 21;
 
     // Curated groups, most common chords first. Symbols may be any Tonal alias;
-    // every chord type not listed here ends up in "More chords".
+    // every chord type not listed here ends up in "More chords". Titles are I18n keys.
     const CHORD_GROUPS = [
-        { title: 'Triads', symbols: ['M', 'm', 'dim', 'aug', 'sus2', 'sus4'] },
-        { title: 'Sevenths', symbols: ['7', 'maj7', 'm7', 'm7b5', 'dim7', 'mMaj7', '7sus4', 'maj7#5'] },
-        { title: 'Sixths & added tones', symbols: ['6', 'm6', '69', 'm69', 'add9', 'madd9'] },
-        { title: 'Extended', symbols: ['9', 'maj9', 'm9', '9sus4', '11', 'maj11', 'm11', '13', 'maj13', 'm13'] },
-        { title: 'Altered dominants', symbols: ['7b9', '7#9', '7b5', '7#5', '7#11', '7b13', '7alt', '13b9', '13#11'] }
+        { key: 'group.triads', symbols: ['M', 'm', 'dim', 'aug', 'sus2', 'sus4'] },
+        { key: 'group.sevenths', symbols: ['7', 'maj7', 'm7', 'm7b5', 'dim7', 'mMaj7', '7sus4', 'maj7#5'] },
+        { key: 'group.sixths', symbols: ['6', 'm6', '69', 'm69', 'add9', 'madd9'] },
+        { key: 'group.extended', symbols: ['9', 'maj9', 'm9', '9sus4', '11', 'maj11', 'm11', '13', 'maj13', 'm13'] },
+        { key: 'group.altered', symbols: ['7b9', '7#9', '7b5', '7#5', '7#11', '7b13', '7alt', '13b9', '13#11'] }
     ];
 
     // Friendlier display symbols where Tonal's primary alias is unusual
@@ -41,11 +45,6 @@
         'M#5add9': '+add9',
         'mM9': 'mMaj9'
     };
-
-    const INVERSION_NAMES = [
-        'Root position', '1st inversion', '2nd inversion', '3rd inversion',
-        '4th inversion', '5th inversion', '6th inversion'
-    ];
 
     const mod12 = n => ((n % 12) + 12) % 12;
     const midiOf = note => Tonal.Note.midi(note);
@@ -121,9 +120,20 @@
         return formatNote(tonic) + formatSuffix(entry.suffix);
     }
 
+    /** Name of a chord type in the current language ("" when it has none). */
+    function chordName(entry) {
+        return hasText(`chord.${entry.id}`) ? t(`chord.${entry.id}`) : entry.name;
+    }
+
+    /** Title of a catalogue group in the current language. */
+    function groupTitle(group) {
+        return t(group.key);
+    }
+
     /**
      * Every Tonal chord type, grouped for display:
-     * [{ title, chords: [{ id, suffix, name, aliases, intervals, chroma, degrees, size }] }].
+     * [{ key, chords: [{ id, suffix, name, aliases, intervals, chroma, degrees, size }] }],
+     * where `key` is the I18n key of the group's title (see groupTitle).
      */
     function buildCatalogue() {
         const entries = new Map();
@@ -132,21 +142,21 @@
             .forEach(type => entries.set(type.aliases[0], toEntry(type)));
 
         const used = new Set();
-        const groups = CHORD_GROUPS.map(({ title, symbols }) => {
+        const groups = CHORD_GROUPS.map(({ key, symbols }) => {
             const chords = symbols
                 .map(symbol => Tonal.ChordType.get(symbol))
                 .filter(type => !type.empty && type.aliases.length > 0)
                 .map(type => entries.get(type.aliases[0]))
                 .filter(entry => entry && !used.has(entry.id));
             chords.forEach(entry => used.add(entry.id));
-            return { title, chords };
+            return { key, chords };
         }).filter(group => group.chords.length > 0);
 
         // Everything else, smallest chords first (sort is stable, so Tonal's order breaks ties)
         const rest = [...entries.values()]
             .filter(entry => !used.has(entry.id))
             .sort((a, b) => a.size - b.size);
-        if (rest.length > 0) groups.push({ title: 'More chords', chords: rest });
+        if (rest.length > 0) groups.push({ key: 'group.more', chords: rest });
 
         return groups;
     }
@@ -157,11 +167,14 @@
         .replace(/\s+/g, ' ')
         .trim();
 
-    /** Whether a catalogue entry matches a free-text filter (case-insensitive, ♯/♭ aware). */
+    /**
+     * Whether a catalogue entry matches a free-text filter (case-insensitive, ♯/♭ aware).
+     * Both the English and the translated chord name count.
+     */
     function entryMatches(entry, query) {
         const q = normalizeQuery(query);
         if (!q) return true;
-        return [entry.suffix, entry.name, ...entry.aliases]
+        return [entry.suffix, entry.name, chordName(entry), ...entry.aliases]
             .some(text => normalizeQuery(text).includes(q));
     }
 
@@ -271,72 +284,19 @@
         return notes.map(note => degrees[pitchClasses.indexOf(Tonal.Note.pitchClass(note))] || '');
     }
 
+    /** "Root position", "1st inversion"… in the current language. */
     function inversionName(index) {
-        return INVERSION_NAMES[index] || `Inversion ${index}`;
+        return t('inversion', index);
     }
 
     // ---------------------------------------------------------------------
     // Chord information (shown when a chord is played)
     // ---------------------------------------------------------------------
 
-    // What the common chords sound like and how they're used, keyed by Tonal id
-    const DESCRIPTIONS = {
-        'M': 'The most common chord: bright and stable, the home chord of a major key.',
-        'm': 'Darker and softer than major; the home chord of a minor key.',
-        'dim': 'Tense and unstable. It usually leads to the chord a half step above its root (vii° → I).',
-        'aug': 'Dreamy and unsettled. Its notes split the octave into equal major 3rds, so any of them can sound like the root.',
-        'sus2': 'Open and ambiguous: the 2nd replaces the 3rd, so it is neither major nor minor.',
-        'sus4': 'The 4th replaces the 3rd and wants to fall back to it (sus4 → major), a classic suspension.',
-        '5': 'Just a root and a 5th, neither major nor minor: the power chord of rock guitar.',
-        '7': 'Tense and bluesy. The tritone between its 3rd and ♭7 pulls toward the chord a 5th below (V7 → I).',
-        'maj7': 'Lush and relaxed; a staple of jazz, bossa nova and soul as a I or IV chord.',
-        'm7': 'Mellow and smooth: the ii of the ii–V–I, and a common minor home chord.',
-        'm7b5': 'Half-diminished: the ii chord of a minor ii–V–i, and the vii chord of a major key.',
-        'dim7': 'A stack of minor 3rds, so it is symmetrical and very tense. Often a passing chord or a stand-in for a dominant 7th.',
-        'm/ma7': 'A minor triad with a major 7th: dark and mysterious, the classic spy-movie sound.',
-        '7sus4': 'A dominant with a 4th instead of the 3rd: less tense than a 7, common in gospel, funk and modal jazz.',
-        'maj7#5': 'An augmented triad with a major 7th: bright but restless. It comes from the harmonic and melodic minor scales.',
-        '6': 'Sweet and vintage; often used instead of maj7 as the final home chord.',
-        'm6': 'Minor with a major 6th: bittersweet, a classic minor home chord in jazz.',
-        '6add9': 'Major with an added 6th and 9th: open and warm, a favourite final chord in jazz and bossa nova.',
-        'm69': 'Minor with an added 6th and 9th: rich and modern-sounding.',
-        'Madd9': 'A major triad with an added 9th and no 7th: shimmering, very common in pop and rock.',
-        'madd9': 'A minor triad with an added 9th: tender and wistful.',
-        '9': 'A dominant 7th with a 9th on top: fuller and funkier than a plain 7.',
-        'maj9': 'A major 7th with a 9th: spacious and dreamy.',
-        'm9': 'A minor 7th with a 9th: smooth, a favourite in neo-soul and jazz.',
-        '9sus4': 'A suspended dominant with a 9th: the floating sound of modal jazz.',
-        '11': 'A dominant 11th. The 3rd is left out because it clashes with the 11th, so it sounds like a sus chord.',
-        'maj11': 'A major 7th with a 9th and 11th. The 11th clashes with the 3rd, so players usually prefer maj9♯11.',
-        'm11': 'A minor 7th with a 9th and 11th: open and modal, the classic Dorian sound.',
-        '13': 'A dominant 7th with a 9th and 13th: a full, bluesy big-band sound.',
-        'maj13': 'A major 7th with a 9th and 13th: very lush.',
-        'm13': 'A minor 7th with a 9th and 13th: the full Dorian sound.',
-        '7b9': 'A dominant with a ♭9: dark and dramatic, typical of V7 in minor keys.',
-        '7#9': 'The major 3rd and the ♯9 (a minor 3rd an octave up) clash for a gritty, bluesy sound, often called the "Hendrix chord".',
-        '7b5': 'A dominant with a ♭5. Its two tritones make it symmetrical, which ties it to the tritone substitution.',
-        '7#5': 'An augmented dominant: the raised 5th pushes upward toward the resolution.',
-        '7#11': 'Lydian dominant: a bright, modern dominant, often used as a tritone substitute.',
-        '7b13': 'A dominant with a ♭13: a darker dominant that tends to resolve to a minor chord.',
-        '7#5#9': 'An altered dominant: maximum tension before resolving, a jazz staple.',
-        '13b9': 'A dominant 13th with a ♭9: rich and tense.',
-        '13#11': 'A dominant 13th with a ♯11: the full Lydian dominant sound.'
-    };
-
-    const QUALITY_NAMES = {
-        P: 'perfect', M: 'major', m: 'minor', A: 'augmented', d: 'diminished',
-        AA: 'doubly augmented', dd: 'doubly diminished'
-    };
-    const NUMBER_NAMES = [
-        '', 'unison', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'octave',
-        'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fifteenth'
-    ];
-
-    /** "3M" -> "major third", "7m" -> "minor seventh", "8P" -> "octave". */
+    /** "3M" -> "major third", "7m" -> "minor seventh", "8P" -> "octave" (in the current language). */
     function intervalName(interval) {
         const { num, q } = Tonal.Interval.get(interval);
-        if (num === 8 && q === 'P') return 'octave';
-        return `${QUALITY_NAMES[q] || q} ${NUMBER_NAMES[num] || `${num}th`}`;
+        return t('interval', { num, q });
     }
 
     /** Short interval name: "3m" -> "m3", "4A" -> "A4". */
@@ -350,35 +310,34 @@
         const octaves = Math.floor(semitones / 12);
         const rest = semitones % 12;
         const simple = rest === 0 ? '' : intervalName(Tonal.Interval.fromSemitones(rest));
-        if (octaves === 0) return simple || 'unison';
-        const octaveText = octaves === 1 ? 'octave' : `${octaves} octaves`;
+        if (octaves === 0) return simple || t('interval', { num: 1, q: 'P' });
+        const octaveText = t('octaves', octaves);
         return simple ? `${octaveText} + ${simple}` : octaveText;
     }
 
     // A chord tone in a recipe: "minor 7th", "♭9th", "♯11th", "6th"
     function toneName(interval) {
         const { num, q, alt } = Tonal.Interval.get(interval);
-        if (num === 7) return `${QUALITY_NAMES[q]} 7th`;
-        return accidentalGlyphs(alt) + num + (num === 2 ? 'nd' : num === 3 ? 'rd' : 'th');
+        return t('recipe.tone', { num, q, degree: accidentalGlyphs(alt) + num });
     }
 
     /** Broad family a chord belongs to: Major, Minor, Dominant, Diminished… */
     function chordFamily(entry) {
         const has = interval => entry.intervals.includes(interval);
-        if (entry.id === '5') return 'Power chord';
-        if (entry.id === '4') return 'Quartal';
-        if (has('3M') && has('7m')) return 'Dominant';
-        if (has('3m') && has('5d') && has('7m')) return 'Half-diminished';
-        if (has('3m') && has('5d')) return 'Diminished';
-        if (has('3M') && has('5A')) return 'Augmented';
-        if (has('3M')) return 'Major';
-        if (has('3m')) return 'Minor';
-        return 'Suspended';
+        if (entry.id === '5') return t('family.power');
+        if (entry.id === '4') return t('family.quartal');
+        if (has('3M') && has('7m')) return t('family.dominant');
+        if (has('3m') && has('5d') && has('7m')) return t('family.halfDiminished');
+        if (has('3m') && has('5d')) return t('family.diminished');
+        if (has('3M') && has('5A')) return t('family.augmented');
+        if (has('3M')) return t('family.major');
+        if (has('3m')) return t('family.minor');
+        return t('family.suspended');
     }
 
     /** How a chord is built, e.g. "Major triad + minor 7th + ♯9th". */
     function chordRecipe(entry) {
-        if (entry.id === '4') return 'Stacked perfect 4ths';
+        if (entry.id === '4') return t('recipe.quartal');
         const rest = new Set(entry.intervals.filter(interval => interval !== '1P'));
         const take = (...wanted) => {
             if (!wanted.every(interval => rest.has(interval))) return false;
@@ -386,18 +345,18 @@
             return true;
         };
         let base;
-        if (take('3M', '5P')) base = 'Major triad';
-        else if (take('3m', '5P')) base = 'Minor triad';
-        else if (take('3m', '5d')) base = 'Diminished triad';
-        else if (take('3M', '5A')) base = 'Augmented triad';
-        else if (take('3M', '5d')) base = 'Major triad with ♭5th';
-        else if (take('3m', '5A')) base = 'Minor triad with ♯5th';
-        else if (take('3M')) base = 'Major 3rd (no 5th)';
-        else if (take('3m')) base = 'Minor 3rd (no 5th)';
-        else if (take('4P', '5P')) base = 'Sus4 triad';
-        else if (take('2M', '5P')) base = 'Sus2 triad';
-        else if (take('5P')) base = 'Root + 5th';
-        else base = 'Root';
+        if (take('3M', '5P')) base = t('recipe.major');
+        else if (take('3m', '5P')) base = t('recipe.minor');
+        else if (take('3m', '5d')) base = t('recipe.diminished');
+        else if (take('3M', '5A')) base = t('recipe.augmented');
+        else if (take('3M', '5d')) base = t('recipe.majorFlat5');
+        else if (take('3m', '5A')) base = t('recipe.minorSharp5');
+        else if (take('3M')) base = t('recipe.major3');
+        else if (take('3m')) base = t('recipe.minor3');
+        else if (take('4P', '5P')) base = t('recipe.sus4');
+        else if (take('2M', '5P')) base = t('recipe.sus2');
+        else if (take('5P')) base = t('recipe.power');
+        else base = t('recipe.root');
         return [base, ...[...rest].map(toneName)].join(' + ');
     }
 
@@ -475,39 +434,24 @@
         return names[mod12(tonicPc)] || pitchClassName(tonicPc, accidentals);
     }
 
-    // Common scales to suggest over a chord, in order of preference: [Tonal name, label]
+    // Common scales to suggest over a chord, in order of preference (Tonal names;
+    // the labels are the I18n keys "scale.<name>")
     const SCALE_SUGGESTIONS = [
-        ['major', 'major (Ionian)'],
-        ['minor', 'natural minor (Aeolian)'],
-        ['dorian', 'Dorian'],
-        ['mixolydian', 'Mixolydian'],
-        ['lydian', 'Lydian'],
-        ['phrygian', 'Phrygian'],
-        ['locrian', 'Locrian'],
-        ['major pentatonic', 'major pentatonic'],
-        ['minor pentatonic', 'minor pentatonic'],
-        ['minor blues', 'blues'],
-        ['harmonic minor', 'harmonic minor'],
-        ['melodic minor', 'melodic minor'],
-        ['lydian dominant', 'Lydian dominant'],
-        ['altered', 'altered'],
-        ['phrygian dominant', 'Phrygian dominant'],
-        ['locrian #2', 'Locrian ♯2'],
-        ['half-whole diminished', 'half-whole diminished'],
-        ['diminished', 'whole-half diminished'],
-        ['whole tone', 'whole tone'],
-        ['lydian augmented', 'Lydian augmented']
+        'major', 'minor', 'dorian', 'mixolydian', 'lydian', 'phrygian', 'locrian',
+        'major pentatonic', 'minor pentatonic', 'minor blues', 'harmonic minor', 'melodic minor',
+        'lydian dominant', 'altered', 'phrygian dominant', 'locrian #2',
+        'half-whole diminished', 'diminished', 'whole tone', 'lydian augmented'
     ];
 
-    /** Up to `limit` common scales built on the chord's root that contain every chord tone. */
+    /** Up to `limit` common scales built on the chord's root that contain every chord tone (labels). */
     function fittingScales(entry, limit = 5) {
         return SCALE_SUGGESTIONS
-            .filter(([name]) => {
+            .filter(name => {
                 const scaleChroma = Tonal.ScaleType.get(name).chroma;
                 return [...entry.chroma].every((bit, i) => bit === '0' || scaleChroma[i] === '1');
             })
             .slice(0, limit)
-            .map(([, label]) => label);
+            .map(name => t(`scale.${name}`));
     }
 
     /**
@@ -521,31 +465,30 @@
             symbol: chordSymbol(tonic, entry),
             family: chordFamily(entry),
             recipe: chordRecipe(entry),
-            description: DESCRIPTIONS[entry.id] || '',
+            description: hasText(`desc.${entry.id}`) ? t(`desc.${entry.id}`) : '',
             aliases: aliasSymbols(tonic, entry),
             tones: pitchClasses.map((pc, i) => ({
                 note: formatNote(pc),
                 degree: entry.degrees[i],
-                interval: i === 0 ? 'root' : intervalName(entry.intervals[i])
+                interval: i === 0 ? t('interval.root') : intervalName(entry.intervals[i])
             })),
             keys: keyFunctions(entry, Tonal.Note.chroma(tonic)).map(found => ({
                 ...found,
                 key: formatNote(keyName(found.tonicPc, found.mode, accidentals))
             })),
-            scales: fittingScales(entry).map(label => `${root} ${label}`)
+            scales: fittingScales(entry).map(label => t('scale.chip', { root, scale: label }))
         };
     }
 
     /**
      * Facts about one voicing ({ notes, type, inversion }):
-     * { position, inversion, bass, slash, figure, span, spanName, steps: [{ short, name }] }.
+     * { inversion, bass, slash, figure, span, spanName, steps: [{ short, name }] }.
      */
     function describeVoicing(entry, tonic, voicing) {
         const { notes, type, inversion } = voicing;
         const bass = noteParts(notes[0]).name;
         const span = midiOf(notes[notes.length - 1]) - midiOf(notes[0]);
         return {
-            position: type === 'close' ? 'Close position' : 'Open position',
             inversion: inversionName(inversion),
             bass,
             slash: inversion > 0 ? `${chordSymbol(tonic, entry)}/${bass}` : null,
@@ -570,6 +513,8 @@
         formatSuffix,
         intervalDegree,
         chordSymbol,
+        chordName,
+        groupTitle,
         buildCatalogue,
         entryMatches,
         chordNotes,

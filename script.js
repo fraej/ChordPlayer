@@ -3,7 +3,8 @@
  *
  * Wires the root picker, chord grid, voicings, chord info and 88-key piano
  * together and plays everything on a sampled grand piano (Tone.js).
- * Music theory lives in theory.js and the keyboards in keyboard.js.
+ * Music theory lives in theory.js, the keyboards in keyboard.js and the
+ * interface languages in i18n.js.
  *
  * Two layouts share the same elements:
  *  - wide screens: voicings in a popup next to the chord, chord info in a sidebar
@@ -23,12 +24,16 @@
     const ARPEGGIO_STEP_MS = 140;
     const SETTINGS_KEY = 'chordPlayer.settings';
 
+    // Interface text in the current language (see i18n.js)
+    const t = (key, vars) => (window.I18n ? I18n.t(key, vars) : key);
+
     const state = {
         rootPc: 0,              // selected root as a pitch class (0 = C)
         accidentals: 'sharp',   // how black-key roots are spelled: 'sharp' | 'flat'
         octave: 4,
         playStyle: 'block',     // 'block' | 'arpeggio'
         sheetTab: 'about',      // tab shown in the sheet on compact screens: 'voicings' | 'about'
+        language: null,         // interface language picked by the user, or null to follow the browser
         lastPlayed: null        // { chord, voicing }, for replay and the info panel
     };
 
@@ -50,6 +55,7 @@
     let piano;
     let view = null;            // chord whose voicings are listed: { button, chord, voicings, container }
     let statusTimer;
+    let statusMessage = null;   // { key, vars } of the status shown, so it can be retranslated
 
     // ---------------------------------------------------------------------
     // Setup
@@ -57,23 +63,27 @@
 
     function init() {
         cacheElements();
+        loadSettings();
+        setupLanguagePicker();
+        translateStaticText();
         watchBottomSpace();
 
         if (!window.Tonal || !window.ChordTheory) {
-            showStatus('Couldn’t load the music theory library. Check your connection and reload the page.', 'error');
+            showStatus('status.theoryFailed', 'error');
             return;
         }
 
-        loadSettings();
         catalogue = ChordTheory.buildCatalogue();
         chordsById = new Map(catalogue.flatMap(group => group.chords).map(entry => [entry.id, entry]));
 
         rootKeyboard = new RootKeyboard(ui.rootKeyboard, {
             names: noteNames(),
             selected: state.rootPc,
-            onSelect: setRoot
+            onSelect: setRoot,
+            label: t('rootNote'),
+            spokenName
         });
-        piano = new PianoKeyboard(ui.piano, { onNoteOn: startNote, onNoteOff: stopNote });
+        piano = new PianoKeyboard(ui.piano, { onNoteOn: startNote, onNoteOff: stopNote, label: t('pianoKeyboard') });
         // On narrow screens the piano scrolls: start in the middle of the selected octave
         piano.centerOn(12 * (state.octave + 1) + 6);
 
@@ -87,7 +97,7 @@
             loadPiano();
         } else {
             audio.failed = true;
-            showStatus('Couldn’t load the audio library, so the piano is silent. Check your connection and reload the page.', 'error');
+            showStatus('status.audioFailed', 'error');
         }
     }
 
@@ -97,6 +107,8 @@
         const infoElement = byId('chordInfo');
         ui = {
             rootName: byId('rootName'),
+            language: byId('language'),
+            languageCode: document.querySelector('.language-code'),
             rootKeyboard: byId('rootKeyboard'),
             octave: byId('octave'),
             accidentalButtons: [...document.querySelectorAll('[data-accidentals]')],
@@ -127,6 +139,7 @@
     }
 
     function bindEvents() {
+        ui.language.addEventListener('change', () => setLanguage(ui.language.value));
         ui.octave.addEventListener('change', () => {
             state.octave = Number(ui.octave.value);
             closeChordView();
@@ -205,6 +218,50 @@
     const rootName = () => ChordTheory.pitchClassName(state.rootPc, state.accidentals);
     const isCompact = () => compactLayout.matches;
 
+    // ---------------------------------------------------------------------
+    // Language
+    // ---------------------------------------------------------------------
+
+    /** The language in use: the user's pick, else the browser's, else English. */
+    const currentLanguage = () => state.language || I18n.detect(navigator.languages || [navigator.language]);
+
+    // Screen-reader name of a root key: "C#" -> "C sharp", "Do sostenido", "Cis"…
+    const spokenName = name => t('spoken', { letter: name.charAt(0), accidental: name.slice(1) });
+
+    function setupLanguagePicker() {
+        ui.language.replaceChildren(...Object.entries(I18n.LANGUAGES).map(([code, name]) => {
+            const option = el('option', null, name);
+            option.value = code;
+            option.lang = code;
+            return option;
+        }));
+    }
+
+    /** Apply the current language to the page's fixed text and the language picker. */
+    function translateStaticText() {
+        const code = I18n.setLanguage(currentLanguage());
+        document.documentElement.lang = code;
+        ui.language.value = code;
+        ui.languageCode.textContent = code.toUpperCase();
+        I18n.translatePage(document);
+        if (!state.lastPlayed) ui.nowDetail.textContent = t('hint');
+        if (statusMessage && !ui.status.hidden) ui.status.textContent = t(statusMessage.key, statusMessage.vars);
+    }
+
+    function setLanguage(code) {
+        state.language = code in I18n.LANGUAGES ? code : null;
+        saveSettings();
+        translateStaticText();
+        if (!catalogue) return; // the theory library didn't load: only the fixed text changes
+
+        closeChordView();
+        rootKeyboard.setLabels({ label: t('rootNote'), spokenName });
+        piano.setLabel(t('pianoKeyboard'));
+        renderChords();
+        renderChordInfo();
+        if (state.lastPlayed) showNowPlaying(state.lastPlayed.chord, state.lastPlayed.voicing);
+    }
+
     function setRoot(pc) {
         state.rootPc = pc;
         closeChordView();
@@ -263,12 +320,15 @@
         if (saved.sheetTab === 'voicings' || saved.sheetTab === 'about') {
             state.sheetTab = saved.sheetTab;
         }
+        if (window.I18n && saved.language in I18n.LANGUAGES) {
+            state.language = saved.language;
+        }
     }
 
     function saveSettings() {
-        const { rootPc, accidentals, octave, playStyle, sheetTab } = state;
+        const { rootPc, accidentals, octave, playStyle, sheetTab, language } = state;
         try {
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify({ rootPc, accidentals, octave, playStyle, sheetTab }));
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify({ rootPc, accidentals, octave, playStyle, sheetTab, language }));
         } catch (error) {
             // Storage unavailable (e.g. private browsing): settings just won't persist
         }
@@ -289,7 +349,7 @@
     function renderChords() {
         const tonic = rootName();
         const sections = catalogue.map(group => el('section', 'chord-group',
-            el('h3', 'chord-group-title', group.title),
+            el('h3', 'chord-group-title', ChordTheory.groupTitle(group)),
             el('div', 'chord-grid', group.chords.map(entry => createChordButton(entry, tonic)))
         ));
         ui.chordGroups.replaceChildren(...sections);
@@ -299,6 +359,7 @@
     function createChordButton(entry, tonic) {
         const symbol = ChordTheory.chordSymbol(tonic, entry);
         const notes = ChordTheory.chordNotes(entry.id, tonic).map(ChordTheory.formatNote);
+        const name = ChordTheory.chordName(entry);
         const count = el('span', 'note-count', String(entry.size));
         count.setAttribute('aria-hidden', 'true');
 
@@ -306,13 +367,13 @@
             el('span', 'chord-info',
                 el('span', 'chord-symbol', symbol),
                 // Many chord types have no name in Tonal; show their formula instead
-                el('span', 'chord-name', entry.name || entry.degrees.join(' '))),
+                el('span', 'chord-name', name || entry.degrees.join(' '))),
             count);
         button.type = 'button';
         button.dataset.id = entry.id;
         button.setAttribute('aria-haspopup', 'dialog');
         button.setAttribute('aria-expanded', 'false');
-        button.title = `${symbol}${entry.name ? ` (${entry.name})` : ''}: ${notes.join(' ')} · ${entry.degrees.join(' ')}`;
+        button.title = `${symbol}${name ? ` (${name})` : ''}: ${notes.join(' ')} · ${entry.degrees.join(' ')}`;
         return button;
     }
 
@@ -330,7 +391,7 @@
             total += shown;
         });
         ui.noMatches.hidden = total > 0;
-        ui.noMatches.textContent = total > 0 ? '' : `No chords match “${query.trim()}”.`;
+        ui.noMatches.textContent = total > 0 ? '' : t('noMatches', { query: query.trim() });
     }
 
     function handleChordClick(event) {
@@ -359,7 +420,7 @@
 
     // "Close · Root position", "Open · 2nd inversion"
     function voicingLabel({ type, inversion }) {
-        return `${type === 'close' ? 'Close' : 'Open'} · ${ChordTheory.inversionName(inversion)}`;
+        return `${t(type === 'close' ? 'voicing.close' : 'voicing.open')} · ${ChordTheory.inversionName(inversion)}`;
     }
 
     /**
@@ -385,7 +446,7 @@
             updateBottomSpace();
             if (button) keepClearOfSheet(button);
         } else {
-            ui.popupTitle.textContent = `${ChordTheory.chordSymbol(chord.tonic, chord.entry)} voicings`;
+            ui.popupTitle.textContent = t('voicings.of', { chord: ChordTheory.chordSymbol(chord.tonic, chord.entry) });
             ui.popup.hidden = false;
             positionPopup(button);
         }
@@ -423,7 +484,7 @@
                 return createVoicingButton(voicing, index);
             }))
         ));
-        container.replaceChildren(...(sections.length > 0 ? sections : [el('p', 'voicing-empty', 'No voicings available')]));
+        container.replaceChildren(...(sections.length > 0 ? sections : [el('p', 'voicing-empty', t('voicings.none'))]));
         container.scrollTop = 0;
 
         // Mark the voicing that's sounding (the close root position after a chord click)
@@ -441,12 +502,12 @@
                 return [i > 0 ? '–' : null, name, el('sub', null, String(octave))];
             }),
             ' ',
-            el('span', 'voicing-span', `${voicing.span}st`));
+            el('span', 'voicing-span', t('span.short', { n: voicing.span })));
         button.type = 'button';
         button.dataset.index = String(index);
-        button.title = `Spans ${voicing.span} semitones`;
+        button.title = t('span.title', { n: voicing.span });
         button.setAttribute('aria-label',
-            `${voicing.notes.map(ChordTheory.formatNote).join(' ')}, spans ${voicing.span} semitones`);
+            t('span.aria', { notes: voicing.notes.map(ChordTheory.formatNote).join(' '), n: voicing.span }));
         return button;
     }
 
@@ -548,46 +609,48 @@
     function renderChordInfo() {
         if (!state.lastPlayed) {
             ui.infoSummary.replaceChildren();
-            ui.infoBody.replaceChildren(el('p', 'info-muted',
-                'Play a chord to see how it’s built, which keys it belongs to and which scales fit over it.'));
+            ui.infoBody.replaceChildren(el('p', 'info-muted', t('info.placeholder')));
             return;
         }
         const { chord, voicing } = state.lastPlayed;
         const about = ChordTheory.describeChord(chord.entry, chord.tonic, state.accidentals);
         const facts = ChordTheory.describeVoicing(chord.entry, chord.tonic, voicing);
+        const name = ChordTheory.chordName(chord.entry);
 
         ui.infoSummary.replaceChildren(
             el('div', 'info-heading',
                 el('span', 'info-symbol', about.symbol),
                 el('span', 'info-family', about.family)),
-            chord.entry.name ? el('p', 'info-name', chord.entry.name) : null);
+            name ? el('p', 'info-name', name) : null);
 
         ui.infoBody.replaceChildren(
-            about.aliases.length > 0 ? el('p', 'info-aliases', `Also written ${about.aliases.slice(0, 5).join(' · ')}`) : null,
+            about.aliases.length > 0 ? el('p', 'info-aliases', t('info.alsoWritten', { list: about.aliases.slice(0, 5).join(' · ') })) : null,
             el('p', 'info-recipe', about.recipe),
             about.description ? el('p', 'info-description', about.description) : null,
 
-            infoSection('Notes', el('table', 'info-notes', el('tbody', null, about.tones.map((tone, i) =>
+            infoSection(t('info.notes'), el('table', 'info-notes', el('tbody', null, about.tones.map((tone, i) =>
                 el('tr', i === 0 ? 'root' : null,
                     el('th', null, tone.note),
                     el('td', 'info-degree', tone.degree),
                     el('td', 'info-interval', tone.interval)))))),
 
-            infoSection('This voicing', el('dl', 'info-facts',
-                fact('Shape', voicingLabel(voicing)),
-                fact('Bass', facts.slash ? `${facts.bass}, written ${facts.slash}` : `${facts.bass} (the root)`),
-                facts.figure ? fact('Figured bass', facts.figure) : null,
-                fact('Span', `${facts.span} semitones (${facts.spanName})`),
-                fact('Steps', facts.steps.map((step, i) => {
+            infoSection(t('info.voicing'), el('dl', 'info-facts',
+                fact(t('fact.shape'), voicingLabel(voicing)),
+                fact(t('fact.bass'), facts.slash
+                    ? t('bass.slash', { bass: facts.bass, slash: facts.slash })
+                    : t('bass.root', { bass: facts.bass })),
+                facts.figure ? fact(t('fact.figure'), facts.figure) : null,
+                fact(t('fact.span'), t('span.value', { n: facts.span, name: facts.spanName })),
+                fact(t('fact.steps'), facts.steps.map((step, i) => {
                     const abbr = el('abbr', null, step.short);
                     abbr.title = step.name;
                     return [i > 0 ? ' · ' : null, abbr];
                 })))),
 
-            infoSection('In keys', keyList(about.keys)),
-            infoSection('Scales that fit', about.scales.length > 0
-                ? el('div', 'info-chips', about.scales.map(name => el('span', 'info-chip', name)))
-                : el('p', 'info-muted', 'No common scale contains all of its notes.'))
+            infoSection(t('info.keys'), keyList(about.keys)),
+            infoSection(t('info.scales'), about.scales.length > 0
+                ? el('div', 'info-chips', about.scales.map(scale => el('span', 'info-chip', scale)))
+                : el('p', 'info-muted', t('scales.none')))
         );
     }
 
@@ -601,20 +664,21 @@
 
     function keyList(keys) {
         if (keys.length === 0) {
-            return el('p', 'info-muted', 'Not part of any major or minor key: some of its notes come from outside the key, as with altered and chromatic chords.');
+            return el('p', 'info-muted', t('keys.none'));
         }
         const row = (label, found) => (found.length === 0 ? null : el('div', 'info-key-row',
             el('span', 'info-key-label', label),
             el('span', 'info-chips', found.map(key => {
                 const chip = el('span', 'info-chip',
-                    el('b', null, key.numeral), ` in ${key.key}`,
-                    key.variant ? el('small', null, ` ${key.variant}`) : null);
-                chip.title = `${key.numeral} in ${key.key} ${key.variant ? `${key.variant} ` : ''}${key.mode}`;
+                    el('b', null, key.numeral), t('keys.in', { key: key.key }),
+                    key.variant ? el('small', null, ` ${t(`variant.${key.variant}`)}`) : null);
+                const mode = t(key.variant ? `mode.${key.mode}.${key.variant}` : `mode.${key.mode}`);
+                chip.title = `${key.numeral}${t('keys.in', { key: key.key })} ${mode}`;
                 return chip;
             }))));
         return el('div', 'info-keys',
-            row('Major', keys.filter(key => key.mode === 'major')),
-            row('Minor', keys.filter(key => key.mode === 'minor')));
+            row(t('keys.major'), keys.filter(key => key.mode === 'major')),
+            row(t('keys.minor'), keys.filter(key => key.mode === 'minor')));
     }
 
     // ---------------------------------------------------------------------
@@ -681,7 +745,7 @@
     function prepareAudio() {
         if (!audio.ready) {
             if (audio.failed) {
-                showStatus('The piano sounds couldn’t be loaded. Reload the page to try again.', 'error');
+                showStatus('status.samplesUnavailable', 'error');
             } else {
                 showLoadingStatus();
             }
@@ -711,22 +775,25 @@
             }));
             audio.sampler = new Tone.Sampler({ urls: Object.fromEntries(buffers), release: 1 }).toDestination();
             audio.ready = true;
-            showStatus('Piano ready', 'success', 2000);
+            showStatus('status.ready', 'success', 2000);
         } catch (error) {
             audio.failed = true;
             console.error('Could not load the piano samples:', error);
-            showStatus('Couldn’t load the piano sounds. Check your connection and reload the page.', 'error');
+            showStatus('status.samplesFailed', 'error');
         }
     }
 
     function showLoadingStatus() {
         // Whole tens, so screen readers aren't flooded with updates
         const percent = Math.floor((audio.loadedSamples / SAMPLE_NOTES.length) * 10) * 10;
-        showStatus(`Loading piano sounds… ${percent}%`, 'loading');
+        showStatus('status.loading', 'loading', 0, { percent });
     }
 
-    function showStatus(message, type, hideAfterMs = 0) {
+    /** Show a status message, given as an I18n key and its variables. */
+    function showStatus(key, type, hideAfterMs = 0, vars = {}) {
         clearTimeout(statusTimer);
+        statusMessage = { key, vars };
+        const message = t(key, vars);
         if (ui.status.textContent !== message) ui.status.textContent = message;
         ui.status.className = `status ${type}`;
         ui.status.hidden = false;
@@ -738,7 +805,7 @@
     function showNowPlaying(chord, voicing) {
         const degrees = ChordTheory.noteDegrees(voicing.notes, chord.pitchClasses, chord.entry.degrees);
         ui.nowChord.textContent = ChordTheory.chordSymbol(chord.tonic, chord.entry);
-        ui.nowDetail.textContent = [chord.entry.name, voicingLabel(voicing)].filter(Boolean).join(' · ');
+        ui.nowDetail.textContent = [ChordTheory.chordName(chord.entry), voicingLabel(voicing)].filter(Boolean).join(' · ');
         ui.nowNotes.replaceChildren(...voicing.notes.map((note, i) => {
             const { name, octave } = ChordTheory.noteParts(note);
             const chip = el('span', 'note-chip',

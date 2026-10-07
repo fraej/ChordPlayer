@@ -215,6 +215,54 @@ select, .chord-filter {
     gap: 6px;
 }
 
+/* Globe + language code; the native select sits invisibly on top so the
+   platform's own picker opens (a wheel on phones, a list on desktop) */
+.language-control {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 34px;
+    padding: 4px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+
+.language-control svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+.language-control select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.language-control:focus-within {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+}
+
+@media (hover: hover) {
+    .language-control:hover {
+        color: var(--text);
+        border-color: var(--muted);
+    }
+}
+
 /* Two or more toggle buttons joined together */
 .segmented {
     display: inline-flex;
@@ -1411,6 +1459,18 @@ select, .chord-filter {
 }
 
 /* Landscape phones: keep the dock low so there's room for the chords */
+/* Very narrow phones: the octave select speaks for itself next to the title */
+@media (max-width: 379px) {
+    .octave-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+}
+
 @media (max-height: 500px) and (orientation: landscape) {
     .now-playing {
         gap: 8px;

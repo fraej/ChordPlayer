@@ -36,8 +36,8 @@
 
     // "C#" -> "C♯", "Bb" -> "B♭"
     const prettyName = name => name.charAt(0) + name.slice(1).replace(/#/g, '♯').replace(/b/g, '♭');
-    // "C#" -> "C sharp", "Bb" -> "B flat" (for screen readers)
-    const spokenName = name => name.charAt(0) + name.slice(1).replace(/#/g, ' sharp').replace(/b/g, ' flat');
+    // "C#" -> "C sharp", "Bb" -> "B flat" (default screen-reader names)
+    const englishSpokenName = name => name.charAt(0) + name.slice(1).replace(/#/g, ' sharp').replace(/b/g, ' flat');
 
     // ---------------------------------------------------------------------
     // Root picker
@@ -60,10 +60,14 @@
          * @param {string[]} options.names - The 12 note names starting from C, e.g. "C#" or "Db"
          * @param {number} [options.selected=0] - Selected pitch class (0-11)
          * @param {function(number)} [options.onSelect] - Called with the pitch class the user picks
+         * @param {string} [options.label="Root note"] - Accessible name of the keyboard
+         * @param {function(string): string} [options.spokenName] - Screen-reader name of a note, e.g. "C#" -> "C sharp"
          */
-        constructor(container, { names, selected = 0, onSelect = null } = {}) {
+        constructor(container, { names, selected = 0, onSelect = null, label = 'Root note', spokenName = englishSpokenName } = {}) {
             this.container = resolveContainer(container);
             this.onSelect = onSelect;
+            this.label = label;
+            this.spokenName = spokenName;
             this.render();
             this.setNames(names);
             this.select(selected);
@@ -75,7 +79,7 @@
                 class: 'root-keyboard',
                 viewBox: `0 0 ${whiteWidth * 7} ${height}`,
                 role: 'radiogroup',
-                'aria-label': 'Root note'
+                'aria-label': this.label
             });
             this.keys = [];
 
@@ -101,10 +105,19 @@
 
         /** Relabel the keys, e.g. when switching between sharps and flats. */
         setNames(names) {
+            this.names = names;
             this.keys.forEach(({ key, label }, pc) => {
                 label.textContent = prettyName(names[pc]);
-                key.setAttribute('aria-label', spokenName(names[pc]));
+                key.setAttribute('aria-label', this.spokenName(names[pc]));
             });
+        }
+
+        /** Change the accessible names, e.g. when the interface language changes. */
+        setLabels({ label = this.label, spokenName = this.spokenName } = {}) {
+            this.label = label;
+            this.spokenName = spokenName;
+            this.svg.setAttribute('aria-label', label);
+            this.setNames(this.names);
         }
 
         /** Mark a pitch class as selected without notifying the listener. */
@@ -163,9 +176,11 @@
          *   the container scrolls horizontally instead
          * @param {function(number)} [options.onNoteOn] - Called with a MIDI note when a key is pressed
          * @param {function(number)} [options.onNoteOff] - Called with a MIDI note when a key is released
+         * @param {string} [options.label="Piano keyboard"] - Accessible name of the keyboard
          */
-        constructor(container, { low = 21, high = 108, minWhiteKeyWidth = 18, onNoteOn = null, onNoteOff = null } = {}) {
+        constructor(container, { low = 21, high = 108, minWhiteKeyWidth = 18, onNoteOn = null, onNoteOff = null, label = 'Piano keyboard' } = {}) {
             this.container = resolveContainer(container);
+            this.label = label;
             this.low = low;
             this.high = high;
             this.minWhiteKeyWidth = minWhiteKeyWidth;
@@ -208,7 +223,7 @@
                 viewBox: `0 0 ${width} ${height}`,
                 'font-size': Math.min(11, Math.max(8, keyWidth * 0.4)).toFixed(1),
                 role: 'img',
-                'aria-label': 'Piano keyboard'
+                'aria-label': this.label
             });
             const whiteLayer = svgElement('g');
             const blackLayer = svgElement('g');
@@ -242,10 +257,17 @@
             }
 
             this.container.replaceChildren(piano);
+            this.svg = piano;
             this.applyHighlight();
             for (const midi of this.pointers.values()) {
                 this.setPressed(midi, true);
             }
+        }
+
+        /** Change the accessible name, e.g. when the interface language changes. */
+        setLabel(label) {
+            this.label = label;
+            if (this.svg) this.svg.setAttribute('aria-label', label);
         }
 
         /** Show which notes are sounding: [{ midi, label, root }]. Replaces the previous highlight. */

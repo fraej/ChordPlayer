@@ -27,7 +27,8 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 - **Playable 88-key keyboard** fixed at the bottom: highlights the sounding notes (root in red), labels them, scrolls to them, and plays notes when you click, drag across or tap the keys.
 - **Smart pitch clamping** — voicings are moved down whole octaves until they sit at or below C7, so high inversions of extended chords don't get shrill.
 - **Made for phones too** — tapping a chord opens one sheet above the piano with **Voicings** and **About** tabs (a side panel in landscape), instead of popups. The header fits in two rows, buttons are finger-sized, piano keys get wider and scroll to whatever plays, and the layout keeps clear of the iPhone notch and home indicator.
-- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab) between visits.
+- **7 languages** — English, Español, Français, Deutsch, Italiano, Português and Català, switchable from the 🌐 picker in the header. Everything is translated: controls, chord names, the chord info panel (interval names, recipes, descriptions, keys and scales) and the screen-reader labels (German even reads the root keys as Cis, Es, B and H). The first visit follows your browser's language. Note names stay as letters (C D E…), as in international chord symbols.
+- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab, language) between visits.
 - **Dark mode** that follows your system setting.
 - **Loading progress** for the piano samples, with a clear message if they can't be loaded.
 
@@ -72,14 +73,16 @@ Then open `http://localhost:8080/` in your browser.
 3. Click a chord to hear it. Its voicings open in a popup next to it; click one to hear that voicing. The chord info panel explains whatever is playing.
    On phones and tablets, the voicings and the chord info share a sheet above the piano: switch between them with the **Voicings** / **About** tabs, and reopen the sheet with the ⓘ button.
 4. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again (on wide screens, clicking elsewhere works too). Clicking another chord switches straight to it.
-5. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
-6. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
+5. Pick the interface language with the 🌐 button next to the octave selector.
+6. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
+7. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
 
 ## Project Structure
 
 ```
 index.html      Main page
 styles.css      Styling, layout, dark mode
+i18n.js         Interface languages: string tables for en, es, fr, de, it, pt, ca
 theory.js       Music theory: chord catalogue, spelling, voicings, chord info (no DOM)
 keyboard.js     SVG keyboard components: RootKeyboard and PianoKeyboard
 script.js       App logic: UI wiring, voicing popup / sheet, chord info, audio, settings
@@ -98,7 +101,8 @@ Uses `Tone.Sampler` with a sparse sample map (A, C, D♯, F♯ across octaves) t
 ## Development Notes
 
 - **No build step** — edit files, refresh, done.
-- `theory.js` has no DOM access and also exports itself via `module.exports`, so voicing logic can be tested in Node (load Tonal's browser build into `globalThis.Tonal` first).
+- `theory.js` has no DOM access and also exports itself via `module.exports`, so voicing logic can be tested in Node (load Tonal's browser build into `globalThis.Tonal`, and `i18n.js` into `globalThis.I18n`, first).
+- **Translations** live in `i18n.js`, one table per language; `I18n.t(key, vars)` fills `{placeholders}`, and a few entries are functions where grammar needs it (ordinal inversions, interval names, German note names). Missing keys fall back to English. Static markup is translated through `data-i18n` / `data-i18n-attr` attributes. To add a language, copy the English table, translate it and add it to `LANGUAGES` and `STRINGS`.
 - Chords are looked up with `Tonal.Chord.getChord(type, tonic)` rather than by joining strings, which Tonal can misread (for example "C" + "b9sus" parses as a C♭ chord).
 - Voicing generation uses a MIDI-ceiling approach (`MIDI 96 = C7`) to keep inversions of extended chords in a comfortable range.
 - Key membership (the "In keys" list) checks that every chord tone sits on its own scale degree, not just that the pitches are in the scale. That keeps symmetrical chords honest: C°7 shows up as vii°7 in C♯/D♭ harmonic minor, not as a chord on the 6th degree of E minor. Altered dominants (7♯9, 7alt) therefore belong to no key; the panel points to their scales instead.
