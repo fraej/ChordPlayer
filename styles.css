@@ -1,436 +1,872 @@
-body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    padding-bottom: 180px; /* Increased padding to make room for the fixed piano */
+/* ------------------------------------------------------------------
+   Design tokens (light theme first, dark theme follows the OS setting)
+   ------------------------------------------------------------------ */
+:root {
+    color-scheme: light dark;
+
+    --page: #f5f7fa;
+    --surface: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7785;
+    --border: #d8dee6;
+    --hover: #eef2f6;
+    --focus: #1e88e5;
+
+    --primary: #2196f3;
+    --primary-strong: #1565c0;
+    --primary-soft: #e3f2fd;
+    --primary-hover: #bbdefb;
+
+    --root: #d32f2f;
+    --root-soft: #ffebee;
+    --root-border: #ffcdd2;
+
+    --green: #2e7d32;
+    --green-soft: #f1f8e9;
+    --green-border: #c8e6c9;
+    --green-hover: #c8e6c9;
+    --green-active: #a5d6a7;
+
+    --key-white: #ffffff;
+    --key-white-hover: #f1f4f8;
+    --key-black: #2b2f36;
+    --key-black-hover: #474d57;
+    --key-border: #c9ced6;
+    --key-text: #333333;
+    --key-label: #9aa3ae;
+    --key-label-strong: #5f6b78;
+    --key-active: #4caf50;
+    --key-active-black: #43a047;
+    --key-active-border: #2e7d32;
+    --key-root: #e53935;
+    --key-root-border: #b71c1c;
+    --key-pressed: #64b5f6;
+    --key-pressed-border: #1e88e5;
+
+    --shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+
+    --status-loading-bg: #fff3cd;
+    --status-loading-text: #856404;
+    --status-success-bg: #d4edda;
+    --status-success-text: #155724;
+    --status-error-bg: #f8d7da;
+    --status-error-text: #721c24;
+
+    --dock-height: 170px; /* kept in sync with the real dock height by script.js */
 }
 
-/* Import Google Fonts for fancy title */
-@import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');
+@media (prefers-color-scheme: dark) {
+    :root {
+        --page: #111418;
+        --surface: #1b2027;
+        --text: #e5e9ef;
+        --muted: #9aa5b4;
+        --border: #313a45;
+        --hover: #262d36;
+        --focus: #64b5f6;
+
+        --primary: #64b5f6;
+        --primary-strong: #90caf9;
+        --primary-soft: #16212c;
+        --primary-hover: #1f3a52;
+
+        --root: #ef5350;
+        --root-soft: #3a1d20;
+        --root-border: #6b2b2f;
+
+        --green: #81c784;
+        --green-soft: #1a251b;
+        --green-border: #2f4b32;
+        --green-hover: #28402b;
+        --green-active: #2f5e35;
+
+        --key-white: #e4e7eb;
+        --key-white-hover: #d3d8de;
+        --key-black: #0e1013;
+        --key-black-hover: #353a42;
+        --key-border: #8c949e;
+        --key-label: #7b8590;
+        --key-label-strong: #4a5560;
+
+        --shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+
+        --status-loading-bg: #3a3115;
+        --status-loading-text: #ffd666;
+        --status-success-bg: #173322;
+        --status-success-text: #8fd6a6;
+        --status-error-bg: #3e1d21;
+        --status-error-text: #ffa4a4;
+    }
+}
+
+/* ------------------------------------------------------------------
+   Base
+   ------------------------------------------------------------------ */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--page);
+    color: var(--text);
+    /* Room for the fixed piano dock */
+    padding-bottom: calc(var(--dock-height) + 16px);
+}
+
+button, input, select {
+    font: inherit;
+    color: inherit;
+}
+
+button:focus-visible, select:focus-visible, input:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+}
+
+select, .chord-filter {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+}
 
 .container {
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    position: relative;
+    position: relative; /* anchors the voicing popup */
+    padding: 16px 20px;
 }
 
-/* Header row: title + root/octave + keyboard on one line */
+/* ------------------------------------------------------------------
+   Header: title + root/octave controls + root picker
+   ------------------------------------------------------------------ */
 .header-row {
     display: flex;
     align-items: center;
-    gap: 16px;
+    flex-wrap: wrap;
+    gap: 12px 20px;
     margin-bottom: 16px;
-    width: 100%;
-    flex-wrap: nowrap;
 }
 
-/* Fancy app title */
 .app-title {
     font-family: 'Pacifico', cursive;
-    color: #2196f3;
+    font-weight: 400;
+    color: var(--primary);
     font-size: 1.8rem;
+    line-height: 1.3;
     margin: 0;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
     white-space: nowrap;
-    flex-shrink: 0;
 }
 
 .controls {
-    margin-bottom: 20px;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    gap: 10px 14px;
 }
 
-select, button {
-    padding: 8px 12px;
-    margin: 5px;
-    border: 1px solid #ddd;
+.root-badge {
+    min-width: 6em;
+    padding: 6px 12px;
+    font-weight: bold;
+    text-align: center;
+    color: var(--root);
+    background-color: var(--root-soft);
+    border: 1px solid var(--root-border);
+    border-bottom: 2px solid var(--root);
     border-radius: 4px;
-    background-color: white;
 }
-button {
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-button:hover {
-    background-color: #f0f0f0;
-}
-.chord-button {
-    margin: 0;
-    display: flex;
-    flex-direction: row;
+
+.octave-control {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    text-align: left;
-    padding: 4px 8px;
-    line-height: 1.2;
-    white-space: nowrap;
-    font-size: 0.85em;
-    min-height: 32px;
     gap: 6px;
 }
-.chord-button:hover {
-    background-color: #bbdefb;
-}
-.chord-button .note-count {
-    font-size: 0.7em;
-    color: #999;
-    flex-shrink: 0;
-}
-.chord-button .chord-info {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
+
+/* Two or more toggle buttons joined together */
+.segmented {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
     overflow: hidden;
-}
-.chord-button .chord-full-name {
-    font-size: 0.65em;
-    color: #888;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    line-height: 1.1;
-}
-.voicing-button {
-    margin: 0;
-    padding: 4px 8px;
-    background-color: #e8f5e9;
-    font-size: 0.8em;
-    min-height: 28px;
-    text-align: left;
-    line-height: 1.3;
-}
-.voicing-button:hover {
-    background-color: #c8e6c9;
-}
-.section {
-    margin-bottom: 20px;
+    background: var(--surface);
 }
 
-/* Chord section styling */
+.segmented button {
+    min-height: 32px;
+    margin: 0;
+    padding: 4px 12px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.segmented button + button {
+    border-left: 1px solid var(--border);
+}
+
+@media (hover: hover) {
+    .segmented button:hover {
+        background: var(--hover);
+    }
+}
+
+.segmented button[aria-pressed="true"] {
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+    font-weight: 600;
+}
+
+.segmented button:focus-visible {
+    outline-offset: -2px;
+}
+
+/* The ♯/♭ glyphs are small in most fonts */
+.segmented [data-accidentals] {
+    min-width: 36px;
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+/* One-octave root picker (keyboard.js → RootKeyboard) */
+.root-picker {
+    flex-shrink: 0;
+    width: 280px;
+    height: 64px;
+    margin-left: auto;
+}
+
+.root-keyboard {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.root-keyboard .key {
+    cursor: pointer;
+    outline: none;
+}
+
+.root-keyboard .key rect {
+    stroke-width: 1;
+    transition: fill 0.15s ease;
+}
+
+.root-keyboard .key.white rect {
+    fill: var(--key-white);
+    stroke: var(--key-border);
+}
+
+.root-keyboard .key.black rect {
+    fill: var(--key-black);
+    stroke: var(--key-black);
+}
+
+@media (hover: hover) {
+    .root-keyboard .key.white:not(.selected):hover rect {
+        fill: var(--key-white-hover);
+    }
+
+    .root-keyboard .key.black:not(.selected):hover rect {
+        fill: var(--key-black-hover);
+    }
+}
+
+.root-keyboard .key.selected rect {
+    fill: var(--root);
+    stroke: var(--root);
+}
+
+.root-keyboard .key:focus-visible rect {
+    stroke: var(--focus);
+    stroke-width: 3;
+}
+
+.root-keyboard text {
+    font-size: 10px;
+    text-anchor: middle;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.root-keyboard .key.white text {
+    fill: var(--key-text);
+}
+
+.root-keyboard .key.black text,
+.root-keyboard .key.selected text {
+    fill: #ffffff;
+    font-weight: bold;
+}
+
+/* ------------------------------------------------------------------
+   Chord grid
+   ------------------------------------------------------------------ */
 .chord-section {
-    background-color: #e3f2fd;
+    padding: 10px 12px 12px;
+    background-color: var(--primary-soft);
+    border-left: 4px solid var(--primary);
     border-radius: 6px;
-    padding: 10px;
-    border-left: 4px solid #2196f3;
-    margin-top: 10px;
-    margin-bottom: 10px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-bottom: 8px;
 }
 
 .chord-section h2 {
-    color: #1565c0;
-    margin: 0 0 8px 0;
+    margin: 0;
     font-size: 1.1em;
+    color: var(--primary-strong);
 }
 
-h2 {
-    color: #333;
-    margin-bottom: 10px;
+.chord-filter {
+    flex: 0 1 300px;
+    min-width: 0;
 }
-#startAudioButton {
-    display: none;
+
+.chord-group + .chord-group {
+    margin-top: 12px;
 }
-#overlay {
-    display: none;
+
+.chord-group-title {
+    margin: 0 0 5px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--primary-strong);
 }
-.status-message {
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 4px;
-}
-.loading {
-    background-color: #fff3cd;
-    color: #856404;
-}
-.success {
-    background-color: #d4edda;
-    color: #155724;
-}
-.error {
-    background-color: #f8d7da;
-    color: #721c24;
-}
-/* Grid layout for chord buttons */
+
 .chord-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 4px;
-    width: 100%;
-}
-@media (max-width: 768px) {
-    .chord-grid {
-        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-    }
-}
-@media (max-width: 480px) {
-    .chord-grid {
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    }
 }
 
-/* Piano container — fills remaining space in header row */
-.piano-container {
-    flex: 1;
-    min-width: 200px;
-    height: 70px;
-    position: relative;
-}
-.piano-container svg.piano-svg {
-    display: block;
-}
-
-/* Root and octave container — compact, inline */
-.root-octave-container {
+.chord-button {
     display: flex;
     align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 34px;
+    margin: 0;
+    padding: 4px 8px;
+    font-size: 0.85em;
+    line-height: 1.2;
+    text-align: left;
     white-space: nowrap;
-}
-
-#current-root {
-    font-weight: bold;
-    padding: 6px 12px;
-    background-color: #ffebee;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    border: 1px solid #ffcdd2;
-    text-align: center;
-    color: #d32f2f;
-    font-size: 0.95em;
-    border-bottom: 2px solid #d32f2f;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
 }
 
-.octave-control {
-    text-align: center;
+@media (hover: hover) {
+    .chord-button:hover {
+        background-color: var(--primary-hover);
+    }
+}
+
+.chord-button.chord-active {
+    background-color: var(--primary-hover);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary);
+}
+
+.chord-info {
     display: flex;
-    align-items: center;
-}
-.octave-label {
-    margin-right: 5px;
+    flex-direction: column;
+    min-width: 0;
 }
 
-/* Floating voicing popup */
+.chord-symbol {
+    font-weight: 600;
+}
+
+.chord-name {
+    font-size: 0.78em;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.note-count {
+    flex-shrink: 0;
+    font-size: 0.75em;
+    color: var(--muted);
+}
+
+.no-matches {
+    margin: 8px 0 0;
+    color: var(--muted);
+}
+
+/* ------------------------------------------------------------------
+   Voicing popup
+   ------------------------------------------------------------------ */
 .voicing-popup {
     position: absolute;
     z-index: 500;
-    background: rgba(255, 255, 255, 0.97);
-    border: 1px solid #c8e6c9;
-    border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
-    padding: 8px;
-    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    width: max-content;
+    max-width: min(440px, calc(100vw - 32px));
     max-height: 340px;
-    overflow-y: auto;
-    overflow-x: hidden;
+    background: var(--surface);
+    border: 1px solid var(--green-border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
     animation: popupFadeIn 0.15s ease-out;
 }
 
 @keyframes popupFadeIn {
-    from { opacity: 0; transform: scale(0.95); }
+    from { opacity: 0; transform: scale(0.97); }
     to { opacity: 1; transform: scale(1); }
 }
 
-/* Small arrow/caret pointing toward the chord button */
+/* Caret pointing at the chord button (script.js sets --caret-left) */
 .voicing-popup::before {
     content: '';
     position: absolute;
-    top: -6px;
-    left: 20px;
+    top: -7px;
+    left: var(--caret-left, 20px);
     width: 12px;
     height: 12px;
-    background: rgba(255, 255, 255, 0.97);
-    border-left: 1px solid #c8e6c9;
-    border-top: 1px solid #c8e6c9;
+    background: var(--surface);
+    border-left: 1px solid var(--green-border);
+    border-top: 1px solid var(--green-border);
     transform: rotate(45deg);
+}
+
+.voicing-popup.popup-above::before {
+    top: auto;
+    bottom: -7px;
+    border: none;
+    border-right: 1px solid var(--green-border);
+    border-bottom: 1px solid var(--green-border);
 }
 
 .voicing-popup-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 2px 4px 6px;
-    border-bottom: 1px solid #e0e0e0;
-    margin-bottom: 6px;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 8px 6px 12px;
+    border-bottom: 1px solid var(--border);
 }
 
 .voicing-popup-title {
     font-weight: bold;
-    font-size: 0.85em;
-    color: #2e7d32;
+    font-size: 0.9em;
+    color: var(--green);
 }
 
 .voicing-popup-close {
+    margin: 0;
+    padding: 2px 6px;
+    font-size: 1em;
+    line-height: 1;
+    color: var(--muted);
     background: none;
     border: none;
-    font-size: 1.1em;
-    color: #999;
+    border-radius: 4px;
     cursor: pointer;
-    padding: 0 4px;
-    margin: 0;
-    min-height: auto;
-    line-height: 1;
 }
+
 .voicing-popup-close:hover {
-    color: #333;
-    background: none;
+    color: var(--text);
+    background: var(--hover);
 }
 
-/* Voicing group inside popup */
-.voicing-popup .inversion-group {
-    margin-bottom: 4px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid #e8f5e9;
-}
-.voicing-popup .inversion-group:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
+.voicing-popup-body {
+    padding: 8px 10px 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
-.voicing-popup .inversion-title {
-    font-weight: 600;
-    color: #2e7d32;
-    margin-bottom: 3px;
-    padding: 1px 6px;
-    background-color: #e8f5e9;
-    border-radius: 3px;
+.inversion-group + .inversion-group {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--green-soft);
+}
+
+.inversion-title {
     display: inline-block;
-    font-size: 0.7em;
+    margin-bottom: 4px;
+    padding: 1px 6px;
+    font-size: 0.72em;
+    font-weight: 600;
+    color: var(--green);
+    background-color: var(--green-soft);
+    border-radius: 3px;
 }
 
-.voicing-popup .voicing-grid {
+.voicing-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 3px;
+    gap: 4px;
 }
 
-.voicing-popup .voicing-button {
+.voicing-button {
     margin: 0;
-    padding: 3px 6px;
-    background-color: #f1f8e9;
-    font-size: 0.75em;
-    min-height: auto;
-    border-radius: 3px;
-    border: 1px solid #c8e6c9;
+    padding: 3px 7px;
+    font-size: 0.78em;
+    line-height: 1.3;
     white-space: nowrap;
+    background-color: var(--green-soft);
+    border: 1px solid var(--green-border);
+    border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.15s;
 }
-.voicing-popup .voicing-button:hover {
-    background-color: #c8e6c9;
-}
-.voicing-popup .voicing-button.active-voicing {
-    background-color: #a5d6a7;
-    border-color: #66bb6a;
+
+@media (hover: hover) {
+    .voicing-button:hover {
+        background-color: var(--green-hover);
+    }
 }
 
-/* Dim background overlay when popup is open */
-.voicing-overlay {
+.voicing-button.active-voicing {
+    background-color: var(--green-active);
+    border-color: var(--green);
+}
+
+.voicing-button sub {
+    font-size: 0.7em;
+}
+
+.voicing-span {
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+.voicing-empty {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+/* ------------------------------------------------------------------
+   Status toast
+   ------------------------------------------------------------------ */
+.status {
     position: fixed;
-    top: 0;
+    top: 12px;
+    left: 50%;
+    z-index: 2000;
+    max-width: calc(100vw - 32px);
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.status.loading {
+    background-color: var(--status-loading-bg);
+    color: var(--status-loading-text);
+}
+
+.status.success {
+    background-color: var(--status-success-bg);
+    color: var(--status-success-text);
+}
+
+.status.error {
+    background-color: var(--status-error-bg);
+    color: var(--status-error-text);
+}
+
+/* ------------------------------------------------------------------
+   Piano dock: "now playing" bar + 88-key keyboard
+   ------------------------------------------------------------------ */
+.dock {
+    position: fixed;
     left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 499;
-    background: transparent;
-}
-
-/* Highlight the active chord button */
-.chord-button.chord-active {
-    background-color: #bbdefb;
-    border-color: #2196f3;
-    box-shadow: 0 0 0 2px #2196f3;
-}
-
-/* When popup appears above the button, move arrow to bottom */
-.voicing-popup.popup-above::before {
-    top: auto;
-    bottom: -6px;
-    border-left: none;
-    border-top: none;
-    border-right: 1px solid #c8e6c9;
-    border-bottom: 1px solid #c8e6c9;
-}
-
-/* Fixed Piano Keyboard at the bottom */
-.fixed-piano-container {
-    position: fixed;
+    right: 0;
     bottom: 0;
-    left: 0;
-    width: 100%;
-    background-color: rgba(255, 255, 255, 0.95);
-    /* Shadow handled by ::before outside the container */
-    box-shadow: none;
     z-index: 1000;
-    border-top: 1px solid #ddd;
-    height: auto;
+    background-color: var(--surface);
+    border-top: 1px solid var(--border);
 }
 
-/* Subtle inner fade at top edge for depth */
-.fixed-piano-container::before {
+/* Soft shadow just above the dock */
+.dock::before {
     content: "";
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     height: 18px;
-    transform: translateY(-100%); /* place shadow outside (above) keyboard */
+    transform: translateY(-100%);
     pointer-events: none;
-    background: linear-gradient(to top, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.12) 45%, rgba(0,0,0,0.04) 70%, rgba(0,0,0,0) 100%);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.08) 45%, rgba(0, 0, 0, 0) 100%);
 }
 
-/* removed .fixed-piano-header */
+.now-playing {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    min-height: 50px;
+    padding: 6px 12px;
+}
 
-#fixed-piano {
-    width: 100%;
-    max-width: none;
-    height: 120px;
-    margin: 0 auto;
+.replay-button {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    margin: 0;
+    padding: 0;
+    color: #ffffff;
+    background-color: var(--primary);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.replay-button svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
+.replay-button:hover:not(:disabled) {
+    background-color: var(--primary-strong);
+}
+
+.replay-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.now-playing-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.now-chord {
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.now-chord:empty {
+    display: none;
+}
+
+.now-detail {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.now-notes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.note-chip {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 34px;
+    padding: 2px 6px;
+    line-height: 1.15;
+    background-color: var(--green-soft);
+    border: 1px solid var(--green-border);
+    border-radius: 6px;
+}
+
+.note-chip.root {
+    background-color: var(--root-soft);
+    border-color: var(--root-border);
+}
+
+.note-chip-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.note-chip-name sub {
+    font-size: 0.65em;
+    font-weight: 400;
+}
+
+.note-chip-degree {
+    font-size: 0.7rem;
+    color: var(--muted);
+}
+
+.play-style {
+    margin-left: auto;
+}
+
+/* 88-key piano (keyboard.js → PianoKeyboard) */
+.piano-scroll {
+    --piano-height: 120px;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-y: hidden;
+    touch-action: pan-x; /* swipe to scroll, tap to play */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-width: thin;
 }
 
-#fixed-piano svg {
-    width: 100%;
-    min-width: 100%;
-    display: block; /* remove inline gap */
+.piano {
+    display: block;
 }
 
-/* Styling for active keys in the fixed piano */
-.active-key {
-    fill: #4caf50 !important; /* Green color for active keys */
-    stroke: #2e7d32 !important;
-    stroke-width: 2px !important;
+.piano .key rect {
+    cursor: pointer;
+    stroke-width: 1;
     transition: fill 0.1s ease-in-out;
 }
 
-/* For active black keys */
-.active-black-key {
-    fill: #66bb6a !important; /* Lighter green for active black keys */
+.piano .key.white rect {
+    fill: var(--key-white);
+    stroke: var(--key-border);
 }
 
-/* For active key text */
-.active-key-text {
-    fill: white !important;
+.piano .key.black rect {
+    fill: var(--key-black);
+    stroke: var(--key-black);
 }
 
-/* Add horizontal scrollbar styling for the fixed piano */
-#fixed-piano::-webkit-scrollbar {
+.piano text {
+    text-anchor: middle;
+    fill: var(--key-label);
+    pointer-events: none;
+}
+
+.piano .key.c-key text {
+    fill: var(--key-label-strong);
+    font-weight: 600;
+}
+
+/* Black keys only get a label while they sound */
+.piano .key.black text {
+    display: none;
+}
+
+.piano .key.active rect {
+    fill: var(--key-active);
+    stroke: var(--key-active-border);
+    stroke-width: 2;
+}
+
+.piano .key.black.active rect {
+    fill: var(--key-active-black);
+}
+
+.piano .key.active.root rect {
+    fill: var(--key-root);
+    stroke: var(--key-root-border);
+}
+
+.piano .key.active text {
+    display: inline;
+    fill: #ffffff;
+    font-weight: 700;
+}
+
+.piano .key.pressed rect,
+.piano .key.pressed.active rect {
+    fill: var(--key-pressed);
+    stroke: var(--key-pressed-border);
+}
+
+.piano-scroll::-webkit-scrollbar {
     height: 8px;
 }
 
-#fixed-piano::-webkit-scrollbar-track {
-    background: #f1f1f1;
+.piano-scroll::-webkit-scrollbar-track {
+    background: var(--hover);
+}
+
+.piano-scroll::-webkit-scrollbar-thumb {
+    background: var(--muted);
     border-radius: 4px;
 }
 
-#fixed-piano::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 4px;
+/* ------------------------------------------------------------------
+   Smaller screens
+   ------------------------------------------------------------------ */
+@media (max-width: 720px) {
+    .container {
+        padding: 12px;
+    }
+
+    .root-picker {
+        width: 100%;
+        max-width: 420px;
+        height: auto;
+        aspect-ratio: 35 / 8;
+        margin-left: 0;
+    }
+
+    .chord-grid {
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    }
+
+    .piano-scroll {
+        --piano-height: 100px;
+    }
+
+    /* Text shares the first row with the play-style toggle; note chips get a row of their own */
+    .now-playing-text {
+        flex: 1 1 0;
+    }
+
+    .now-notes {
+        order: 1;
+        flex-basis: 100%;
+    }
+
+    .play-style button {
+        padding: 4px 9px;
+        font-size: 0.85rem;
+    }
 }
 
-#fixed-piano::-webkit-scrollbar-thumb:hover {
-    background: #555;
-} 
+@media (max-width: 480px) {
+    .app-title {
+        font-size: 1.5rem;
+    }
+
+    .chord-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    }
+
+    .chord-filter {
+        flex-basis: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}

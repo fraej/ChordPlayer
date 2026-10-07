@@ -3,55 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Explore chords, voicings and inversions on a sampled grand piano.">
+    <meta name="color-scheme" content="light dark">
     <title>Chord Player</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap">
     <link rel="stylesheet" href="styles.css">
-    <!-- Include the SVG Keyboard library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tonal@6.5.0/browser/tonal.min.js"></script>
+    <script src="theory.js"></script>
     <script src="keyboard.js"></script>
 </head>
 <body>
-    <div class="container">
-        <div id="statusMessage" class="status-message loading" style="display: none;">
-            Initializing...
-        </div>
-        
-        <!-- Header row: title + root/octave + note selector all on one line -->
-        <div class="header-row">
+    <main class="container">
+        <!-- Header: title, root/spelling/octave controls and the root picker -->
+        <header class="header-row">
             <h1 class="app-title">Chord Player</h1>
-            
-            <div class="root-octave-container">
-                <div id="current-root">Root: C</div>
-                
-                <div class="octave-control">
-                    <span class="octave-label">Octave:</span>
+
+            <div class="controls">
+                <div class="root-badge">Root: <span id="rootName">C</span></div>
+
+                <div class="segmented" role="group" aria-label="Spell black-key roots with">
+                    <button type="button" data-accidentals="sharp" aria-pressed="true" title="Sharps (C♯, D♯ …)" aria-label="Sharps">♯</button>
+                    <button type="button" data-accidentals="flat" aria-pressed="false" title="Flats (D♭, E♭ …)" aria-label="Flats">♭</button>
+                </div>
+
+                <label class="octave-control">
+                    <span>Octave</span>
                     <select id="octave">
                         <option value="2">2</option>
                         <option value="3">3</option>
                         <option value="4" selected>4</option>
                         <option value="5">5</option>
                     </select>
-                </div>
+                </label>
             </div>
-            
-            <!-- SVG Piano Keyboard -->
-            <div class="piano-container" id="piano-container"></div>
-        </div>
 
-        <div class="section chord-section">
-            <h2>Chords</h2>
-            <div id="chordButtons"></div>
-        </div>
+            <div class="root-picker" id="rootKeyboard"></div>
+        </header>
 
-        <!-- Floating voicing popup (appears near clicked chord button) -->
-        <div id="voicingPopup" class="voicing-popup" style="display: none;"></div>
+        <section class="chord-section" aria-labelledby="chordsHeading">
+            <div class="section-header">
+                <h2 id="chordsHeading">Chords</h2>
+                <input type="search" id="chordFilter" class="chord-filter"
+                       placeholder="Filter chords: m7, sus, ♭9, minor…" aria-label="Filter chords"
+                       autocomplete="off" spellcheck="false">
+            </div>
+            <div id="chordGroups"></div>
+            <p id="noMatches" class="no-matches" hidden></p>
+        </section>
+
+        <!-- Floating voicing popup (opens next to the clicked chord button) -->
+        <div id="voicingPopup" class="voicing-popup" role="dialog" aria-labelledby="voicingTitle" hidden>
+            <div class="voicing-popup-header">
+                <span id="voicingTitle" class="voicing-popup-title"></span>
+                <button type="button" class="voicing-popup-close" aria-label="Close voicings" title="Close (Esc)">✕</button>
+            </div>
+            <div class="voicing-popup-body"></div>
+        </div>
+    </main>
+
+    <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+    <!-- Piano dock fixed to the bottom: what's playing + the playable 88-key keyboard -->
+    <div class="dock" id="dock" role="region" aria-label="Piano">
+        <div class="now-playing">
+            <button type="button" id="replayButton" class="replay-button" aria-label="Play again" title="Play again" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <div class="now-playing-text" aria-live="polite">
+                <span id="nowChord" class="now-chord"></span>
+                <span id="nowDetail" class="now-detail">Pick a chord to hear it, or play the keys below.</span>
+            </div>
+            <div id="nowNotes" class="now-notes"></div>
+            <div class="segmented play-style" role="group" aria-label="Play chords as">
+                <button type="button" data-play-style="block" aria-pressed="true" title="Play all notes together">Block</button>
+                <button type="button" data-play-style="arpeggio" aria-pressed="false" title="Play the notes one after another">Arpeggio</button>
+            </div>
+        </div>
+        <div id="piano" class="piano-scroll"></div>
     </div>
-    
-    <!-- Fixed Piano Keyboard at the bottom -->
-    <div class="fixed-piano-container">
-        <div id="fixed-piano"></div>
-    </div>
-    
+
     <script src="script.js"></script>
 </body>
-</html> 
+</html>
