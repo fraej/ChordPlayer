@@ -382,8 +382,25 @@
         { id: 'harmonic', mode: 'minor', variant: 'harmonic', tonal: 'harmonic minor', steps: [0, 2, 3, 5, 7, 8, 11] },
         { id: 'melodic', mode: 'minor', variant: 'melodic', tonal: 'melodic minor', steps: [0, 2, 3, 5, 7, 9, 11] }
     ];
-    // Scales a key can be built on, for the key picker: 'major' | 'minor' | 'harmonic' | 'melodic'
-    const KEY_SCALE_IDS = KEY_SCALES.map(scale => scale.id);
+
+    // Scales the key picker offers: the seven modes of the major scale, in brightness
+    // order from the I18n "scale.<tonal>" labels' point of view, then the minor variants.
+    // `parentDegree` is the mode's degree in its parent major scale (D Dorian = 2nd of C major),
+    // which gives the mode its key signature and so its spelling.
+    const PICKER_SCALES = [
+        KEY_SCALES[0],
+        { id: 'dorian', tonal: 'dorian', parentDegree: 1, steps: [0, 2, 3, 5, 7, 9, 10] },
+        { id: 'phrygian', tonal: 'phrygian', parentDegree: 2, steps: [0, 1, 3, 5, 7, 8, 10] },
+        { id: 'lydian', tonal: 'lydian', parentDegree: 3, steps: [0, 2, 4, 6, 7, 9, 11] },
+        { id: 'mixolydian', tonal: 'mixolydian', parentDegree: 4, steps: [0, 2, 4, 5, 7, 9, 10] },
+        KEY_SCALES[1],
+        { id: 'locrian', tonal: 'locrian', parentDegree: 6, steps: [0, 1, 3, 5, 6, 8, 10] },
+        KEY_SCALES[2],
+        KEY_SCALES[3]
+    ];
+    // Ids for the key picker: 'major' | 'dorian' | … | 'minor' | 'locrian' | 'harmonic' | 'melodic'
+    const KEY_SCALE_IDS = PICKER_SCALES.map(scale => scale.id);
+    const pickerScale = id => PICKER_SCALES.find(scale => scale.id === id) || PICKER_SCALES[0];
     const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
     // Usual key names; the 6♯/6♭ ties (null) follow the sharp/flat preference
     const MAJOR_KEY_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', null, 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -441,31 +458,53 @@
         return names[mod12(tonicPc)] || pitchClassName(tonicPc, accidentals);
     }
 
-    /** Usual spelling of a key's tonic, e.g. (10, 'major') -> "Bb", (8, 'minor') -> "G#". */
+    /**
+     * Usual spelling of a key's tonic, e.g. (10, 'major') -> "Bb", (8, 'minor') -> "G#",
+     * (3, 'dorian') -> "Eb" (the 2nd degree of D♭ major).
+     */
     function keyTonicName(tonicPc, scaleId, accidentals) {
-        const scale = KEY_SCALES.find(candidate => candidate.id === scaleId) || KEY_SCALES[0];
-        return keyName(tonicPc, scale.mode, accidentals);
+        const scale = pickerScale(scaleId);
+        if (scale.mode) return keyName(tonicPc, scale.mode, accidentals);
+        // Spell the parent major key both ways (F♯/G♭…) and keep the plainer result:
+        // fewest accidentals on the tonic, then the smaller key signature, then ♯/♭ preference
+        const parentPc = mod12(tonicPc - KEY_SCALES[0].steps[scale.parentDegree]);
+        const parents = accidentals === 'flat'
+            ? [FLAT_NAMES[parentPc], SHARP_NAMES[parentPc]]
+            : [SHARP_NAMES[parentPc], FLAT_NAMES[parentPc]];
+        const candidates = parents.map(parent => {
+            const tonic = Tonal.Scale.get(`${parent} major`).notes[scale.parentDegree];
+            return { tonic, cost: [Math.abs(Tonal.Note.get(tonic).alt), Math.abs(Tonal.Key.majorKey(parent).alteration)] };
+        });
+        candidates.sort((a, b) => a.cost[0] - b.cost[0] || a.cost[1] - b.cost[1]);
+        return candidates[0].tonic;
     }
+
+    // Chord types with the stacked-thirds shape 1-3-5 and 1-3-5-7
+    const shapeOf = entry => entry.intervals.map(interval => Tonal.Interval.get(interval).num).join(',');
 
     /**
      * The chords that belong to a key, degree by degree:
-     * [{ degree, root, numeral, chords: [{ entry, numeral }] }], where `root` is the
-     * degree's note spelled as in the key ("Bb" in F major), `numeral` the degree's
-     * triad (I, ii, vii°…) and `chords` the catalogue entries, in catalogue order,
-     * whose every tone is on its own degree of the scale.
+     * [{ degree, root, numeral, triad, seventh, chords: [{ entry, numeral }] }], where
+     * `root` is the degree's note spelled as in the key ("Bb" in F major), `numeral`
+     * the degree's triad (I, ii, vii°…), `triad` and `seventh` the chords built in
+     * thirds from the scale ({ entry, numeral } or null), and `chords` every catalogue
+     * entry, in catalogue order, whose every tone is on its own degree of the scale.
      */
     function keyChords(entries, tonicPc, scaleId, accidentals) {
-        const scale = KEY_SCALES.find(candidate => candidate.id === scaleId) || KEY_SCALES[0];
-        const roots = Tonal.Scale.get(`${keyName(tonicPc, scale.mode, accidentals)} ${scale.tonal}`).notes;
+        const scale = pickerScale(scaleId);
+        const roots = Tonal.Scale.get(`${keyTonicName(tonicPc, scale.id, accidentals)} ${scale.tonal}`).notes;
         return scale.steps.map((step, degree) => {
             const chords = entries
                 .filter(entry => fitsDegree(entry, scale.steps, degree))
                 .map(entry => ({ entry, numeral: romanNumeral(degree, entry) }));
-            const triad = chords.find(({ entry }) => ['M', 'm', 'dim', 'aug'].includes(entry.id));
+            const triad = chords.find(({ entry }) => shapeOf(entry) === '1,3,5') || null;
+            const seventh = chords.find(({ entry }) => shapeOf(entry) === '1,3,5,7') || null;
             return {
                 degree,
                 root: roots[degree],
                 numeral: triad ? triad.numeral : NUMERALS[degree],
+                triad,
+                seventh,
                 chords
             };
         });

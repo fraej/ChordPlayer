@@ -458,6 +458,28 @@ select, .chord-filter {
     color: var(--primary-strong);
 }
 
+/* A key's triads and sevenths, one column per degree */
+.main-chords .chord-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+    .main-chords .chord-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    }
+}
+
+/* Long mode names ("natural minor (Aeolian)") shrink rather than overflow */
+.key-control {
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.key-control select {
+    min-width: 0;
+    max-width: 100%;
+}
+
 /* Roman numerals keep their case: ii is minor, II major */
 .degree-numeral {
     text-transform: none;

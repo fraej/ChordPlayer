@@ -35,7 +35,7 @@
         sheetTab: 'about',      // tab shown in the sheet on compact screens: 'voicings' | 'about'
         language: null,         // interface language picked by the user, or null to follow the browser
         keyTonic: null,         // pitch class of the chosen key's tonic, or null to show every chord on the root
-        keyScale: 'major',      // 'major' | 'minor' | 'harmonic' | 'melodic'
+        keyScale: 'major',      // a ChordTheory.KEY_SCALE_IDS id: 'major', 'dorian' … 'minor', 'locrian', 'harmonic', 'melodic'
         lastPlayed: null        // { chord, voicing }, for replay and the info panel
     };
 
@@ -276,6 +276,12 @@
         syncControls();
         renderChords();
         saveSettings();
+        // With a key chosen, every degree is listed: bring the picked root's chords into view
+        const degree = ui.chordGroups.querySelector('.chord-group.current-degree');
+        if (degree) {
+            const top = degree.getBoundingClientRect().top;
+            if (top < 0 || top > ui.dock.getBoundingClientRect().top - 120) degree.scrollIntoView({ block: 'start' });
+        }
     }
 
     function setAccidentals(accidentals) {
@@ -317,9 +323,10 @@
             option.value = String(pc);
             return option;
         }));
-        const scaleLabels = { major: 'mode.major', minor: 'mode.minor', harmonic: 'mode.minor.harmonic', melodic: 'mode.minor.melodic' };
+        // Labels are the scale names used in the chord info ("major (Ionian)", "Dorian"…)
+        const tonalNames = { harmonic: 'harmonic minor', melodic: 'melodic minor' };
         ui.keyScale.replaceChildren(...ChordTheory.KEY_SCALE_IDS.map(id => {
-            const option = el('option', null, t(scaleLabels[id]));
+            const option = el('option', null, t(`scale.${tonalNames[id] || id}`));
             option.value = id;
             return option;
         }));
@@ -382,7 +389,7 @@
         if (window.I18n && saved.language in I18n.LANGUAGES) {
             state.language = saved.language;
         }
-        if (['major', 'minor', 'harmonic', 'melodic'].includes(saved.keyScale)) {
+        if (window.ChordTheory && ChordTheory.KEY_SCALE_IDS.includes(saved.keyScale)) {
             state.keyScale = saved.keyScale;
         }
         if (Number.isInteger(saved.keyTonic) && saved.keyTonic >= 0 && saved.keyTonic < 12) {
@@ -429,14 +436,19 @@
             sections = catalogue.map(chordGroup => group(ChordTheory.groupTitle(chordGroup),
                 chordGroup.chords.map(entry => createChordButton(entry, tonic))));
         } else {
-            sections = ChordTheory.keyChords(catalogueEntries(), state.keyTonic, state.keyScale, state.accidentals)
-                .map(degree => {
+            const degrees = ChordTheory.keyChords(catalogueEntries(), state.keyTonic, state.keyScale, state.accidentals);
+            // First the chords everyone plays in the key: its triads, then its seventh chords
+            const main = ['triad', 'seventh'].flatMap(shape => degrees.filter(degree => degree[shape])
+                .map(degree => createChordButton(degree[shape].entry, degree.root, degree[shape].numeral)));
+            const mainSection = group(t('key.main'), main);
+            mainSection.classList.add('main-chords');
+            sections = [mainSection].concat(degrees.map(degree => {
                     const title = [el('span', 'degree-numeral', degree.numeral), ` · ${ChordTheory.formatNote(degree.root)}`];
                     const section = group(title,
                         degree.chords.map(({ entry, numeral }) => createChordButton(entry, degree.root, numeral)));
                     section.classList.toggle('current-degree', pitchClassOf(degree.root) === state.rootPc);
                     return section;
-                });
+                }));
         }
         ui.chordGroups.replaceChildren(...sections);
         applyFilter();

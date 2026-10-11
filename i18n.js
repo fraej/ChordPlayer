@@ -120,6 +120,7 @@
         'scale.chip': '{root} {scale}',
         'key': 'Key',
         'key.all': 'Any',
+        'key.main': 'Main chords',
         'key.mode': 'Mode',
         'key.title': 'Only show the chords that belong to a key',
 
@@ -313,6 +314,7 @@
         'scale.chip': '{root} {scale}',
         'key': 'Tonalidad',
         'key.all': 'Cualquiera',
+        'key.main': 'Acordes principales',
         'key.mode': 'Modo',
         'key.title': 'Mostrar solo los acordes de una tonalidad',
 
@@ -540,6 +542,7 @@
         'scale.chip': '{root} {scale}',
         'key': 'Tonalité',
         'key.all': 'Toutes',
+        'key.main': 'Accords principaux',
         'key.mode': 'Mode',
         'key.title': 'N’afficher que les accords d’une tonalité',
 
@@ -773,6 +776,7 @@
         'scale.chip': '{root} {scale}',
         'key': 'Tonart',
         'key.all': 'Alle',
+        'key.main': 'Hauptakkorde',
         'key.mode': 'Tongeschlecht',
         'key.title': 'Nur die Akkorde einer Tonart zeigen',
 
@@ -999,6 +1003,7 @@
         'scale.chip': '{root} {scale}',
         'key': 'Tonalità',
         'key.all': 'Tutte',
+        'key.main': 'Accordi principali',
         'key.mode': 'Modo',
         'key.title': 'Mostra solo gli accordi di una tonalità',
 
@@ -1226,6 +1231,7 @@
         'scale.chip': '{root} {scale}',
         'key': 'Tonalidade',
         'key.all': 'Qualquer',
+        'key.main': 'Acordes principais',
         'key.mode': 'Modo',
         'key.title': 'Mostrar só os acordes de uma tonalidade',
 
@@ -1453,6 +1459,7 @@
         'scale.chip': '{root} {scale}',
         'key': 'Tonalitat',
         'key.all': 'Qualsevol',
+        'key.main': 'Acords principals',
         'key.mode': 'Mode',
         'key.title': 'Mostra només els acords d’una tonalitat',
 

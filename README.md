@@ -11,7 +11,7 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 - **Root selection** via a compact piano keyboard (click it, or Tab to it and use the arrow keys).
 - **Sharps or flats** — a ♯/♭ toggle respells black-key roots, so you get B♭ D F instead of A♯ C♯♯ E♯.
 - **Every chord type from Tonal.js** (107 of them), grouped under headings: triads → sevenths → sixths & added tones → extended → altered dominants → everything else.
-- **Key filter** — pick a key (e.g. G major, A harmonic minor) to see only the chords that belong to it, grouped by scale degree (I · G, ii · A … vii° · F♯), each labelled with its Roman numeral (V7, iiø7…). Notes outside the key are greyed out on the root picker, and the root's degree is marked. Major, natural minor, harmonic minor and melodic minor are available.
+- **Key filter** — pick a key (e.g. C major, D Dorian, A harmonic minor) to see only the chords that belong to it. **Main chords** comes first: the key's seven triads and seven seventh chords (C Dm Em F G Am B° / Cmaj7 Dm7 … Bø7). Below, every chord on each scale degree (I · C, ii · D … vii° · B), each labelled with its Roman numeral (V7, iiø7…). Notes outside the key are greyed out on the root picker; picking a root jumps to its degree. All seven modes (Ionian/major, Dorian, Phrygian, Lydian, Mixolydian, Aeolian/natural minor, Locrian) plus harmonic and melodic minor are available, spelled with the right key signature (F Locrian, not E♯ Locrian).
 - **Chord filter** — type `m7`, `sus`, `♭9` (or `b9`), `minor`… to narrow the list.
 - **Voicings & inversions** — close and open position voicings grouped by inversion in a popup next to the chord; click any of them to hear it.
 - **Correct spelling everywhere** — notes are shown as they're spelled in the chord (C7 shows B♭, not A♯), with ♯/♭ symbols and scale degrees.
@@ -73,7 +73,7 @@ Then open `http://localhost:8080/` in your browser.
 2. Pick a root note on the small keyboard (highlighted in red). Use ♯/♭ to choose how black-key roots are spelled.
 3. Click a chord to hear it. Its voicings open in a popup next to it; click one to hear that voicing. The chord info panel explains whatever is playing.
    On phones and tablets, the voicings and the chord info share a sheet above the piano: switch between them with the **Voicings** / **About** tabs, and reopen the sheet with the ⓘ button.
-4. To stay in one key, choose it with **Key** above the chords (and its mode next to it); choose **Any** to see every chord on the root again.
+4. To stay in one key, choose it with **Key** above the chords and its mode next to it (major, Dorian, Mixolydian…). Its main chords are at the top; pick a root to jump to the chords on that degree. Choose **Any** to see every chord on the root again.
 5. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again (on wide screens, clicking elsewhere works too). Clicking another chord switches straight to it.
 6. Pick the interface language with the 🌐 button next to the octave selector.
 7. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
@@ -102,7 +102,7 @@ Uses `Tone.Sampler` with a sparse sample map (A, C, D♯, F♯ across octaves) t
 
 ## Development Notes
 
-- **No build step** — edit files, refresh, done.
+- **No build step** — edit files, refresh, done. When deploying, bump the `?v=` number on the local CSS/JS links in `index.html` so browsers don't mix cached old files with new ones.
 - `theory.js` has no DOM access and also exports itself via `module.exports`, so voicing logic can be tested in Node (load Tonal's browser build into `globalThis.Tonal`, and `i18n.js` into `globalThis.I18n`, first).
 - **Translations** live in `i18n.js`, one table per language; `I18n.t(key, vars)` fills `{placeholders}`, and a few entries are functions where grammar needs it (ordinal inversions, interval names, German note names). Missing keys fall back to English. Static markup is translated through `data-i18n` / `data-i18n-attr` attributes. To add a language, copy the English table, translate it and add it to `LANGUAGES` and `STRINGS`.
 - Chords are looked up with `Tonal.Chord.getChord(type, tonic)` rather than by joining strings, which Tonal can misread (for example "C" + "b9sus" parses as a C♭ chord).
