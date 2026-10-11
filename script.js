@@ -163,15 +163,15 @@
             closeChordView();
             applyFilter();
         });
-        ui.chordGroups.addEventListener('click', handleChordClick);
-        ui.popupBody.addEventListener('click', handleVoicingClick);
-        ui.sheetVoicings.addEventListener('click', handleVoicingClick);
+        onPress(ui.chordGroups, handleChordClick);
+        onPress(ui.popupBody, handleVoicingClick);
+        onPress(ui.sheetVoicings, handleVoicingClick);
         ui.popupClose.addEventListener('click', hideDetails);
         ui.infoClose.addEventListener('click', hideDetails);
         ui.sheetTabs.forEach(tab => {
             tab.addEventListener('click', () => setSheetTab(tab.dataset.tab));
         });
-        ui.replay.addEventListener('click', replay);
+        onPress(ui.replay, replay);
         ui.infoToggle.addEventListener('click', toggleDetails);
 
         document.addEventListener('keydown', event => {
@@ -193,9 +193,32 @@
 
         // Audio may only start during a user gesture, and a touch only counts once the
         // finger lifts (piano keys sound on touch-down), so retry on every gesture
+        document.addEventListener('pointerdown', resumeAudio, true);
         document.addEventListener('pointerup', resumeAudio, true);
         document.addEventListener('keydown', resumeAudio, true);
     }
+
+    /**
+     * Run `handler` when a button inside `element` is pressed. With a mouse or pen that's
+     * as the button goes down: a click only fires once it's released, which delays the
+     * sound by however long the button is held (~100 ms). Touch still waits for the tap
+     * to end, so a finger that starts scrolling the chord list doesn't play anything.
+     * Keyboard activation (Enter/Space) arrives as a click with detail 0.
+     */
+    function onPress(element, handler) {
+        let handledDown = false;
+        element.addEventListener('pointerdown', event => {
+            handledDown = event.pointerType !== 'touch' && event.button === 0;
+            if (handledDown) handler(event);
+        });
+        element.addEventListener('click', event => {
+            const duplicate = handledDown && event.detail > 0;
+            handledDown = false;
+            if (!duplicate) handler(event);
+        });
+    }
+
+    const fromKeyboard = event => event.type === 'click' && event.detail === 0;
 
     // Keep the page padded so the fixed piano dock (and the sheet, when it sits at
     // the bottom) never covers the last chords
@@ -514,8 +537,8 @@
         if (view && view.button === button) {
             hideDetails(); // a second click on the same chord hides the details
         } else if (state.showDetails) {
-            // Keyboard activation (detail 0) moves focus into the popup or sheet
-            openChordView(button, chord, { focus: event.detail === 0 });
+            // Keyboard activation moves focus into the popup or sheet
+            openChordView(button, chord, { focus: fromKeyboard(event) });
         } else {
             closeChordView(); // details are off: just play (and drop any stale view)
         }
@@ -813,6 +836,7 @@
     /** Sound a voicing ({ notes, type, inversion }), light it up and describe it. */
     function play(chord, voicing) {
         state.lastPlayed = { chord, voicing };
+        sound(voicing.notes); // first, so redrawing the page doesn't hold up the sound
         showNowPlaying(chord, voicing);
         renderChordInfo();
         syncSheetControls();
@@ -822,7 +846,6 @@
             root: ChordTheory.pitchClass(note) === chord.tonic
         })));
         piano.revealHighlight();
-        sound(voicing.notes);
     }
 
     function replay() {
@@ -893,7 +916,7 @@
             const buffers = await Promise.all(SAMPLE_NOTES.map(async note => {
                 // Ogg where the browser supports it, MP3 otherwise (Safari)
                 const file = `${note.replace('#', 's')}.[ogg|mp3]`;
-                const buffer = await Tone.ToneAudioBuffer.fromUrl(SAMPLE_BASE_URL + file);
+                const buffer = trimLeadingSilence(await Tone.ToneAudioBuffer.fromUrl(SAMPLE_BASE_URL + file));
                 audio.loadedSamples++;
                 if (!audio.failed) showLoadingStatus();
                 return [note, buffer];
@@ -906,6 +929,26 @@
             console.error('Could not load the piano samples:', error);
             showStatus('status.samplesFailed', 'error');
         }
+    }
+
+    /**
+     * Cut the quiet lead-in before a sample's attack (silence in the recording, or the
+     * padding an MP3 encoder adds), so notes sound as soon as they're played. The cut
+     * starts 2 ms before the first sample that reaches 1% (-40 dB) of the peak.
+     */
+    function trimLeadingSilence(buffer) {
+        const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i));
+        let peak = 0;
+        channels.forEach(data => { for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i])); });
+        if (peak === 0) return buffer;
+        const threshold = peak * 0.01;
+        const onset = Math.min(...channels.map(data => {
+            let i = 0;
+            while (i < data.length && Math.abs(data[i]) < threshold) i++;
+            return i;
+        }));
+        const start = onset / buffer.sampleRate - 0.002;
+        return start > 0.001 ? buffer.slice(start) : buffer;
     }
 
     function showLoadingStatus() {

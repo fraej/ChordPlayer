@@ -99,7 +99,7 @@ LICENSE         GPLv3
 
 ## Audio
 
-Uses `Tone.Sampler` with a sparse sample map (A, C, D♯, F♯ across octaves) that Tone.js pitch-shifts in between. The samples are loaded one by one so the app can show progress, as Ogg (or MP3 where Ogg isn't supported, e.g. Safari). Release is set to 1 second. Browsers only allow audio to start after a user gesture, so the audio context is resumed on the first click, tap or key press.
+Uses `Tone.Sampler` with a sparse sample map (A, C, D♯, F♯ across octaves) that Tone.js pitch-shifts in between. The samples are loaded one by one so the app can show progress, as Ogg (or MP3 where Ogg isn't supported, e.g. Safari). Release is set to 1 second. To keep the delay between pressing and hearing small: notes are scheduled for the current audio time (no look-ahead); chord, voicing and replay buttons sound as the mouse button goes down rather than on release (touch still waits for the tap to end, so scrolling the chord list doesn't play chords); the sound is started before the page redraws the chord info; and each sample's silent lead-in is trimmed to 2 ms before its attack. Browsers only allow audio to start after a user gesture, so the audio context is resumed on the first click, tap or key press.
 
 ## Development Notes
 
