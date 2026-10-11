@@ -24,12 +24,13 @@ An interactive web app for exploring chord structures, voicings, and inversions 
   - scales that fit over it (C Mixolydian, C Lydian dominant…).
 
   It's a sidebar on wide screens, and the About tab of the chord sheet on phones and tablets.
+- **Details on or off** — once you close the voicings/details (✕, <kbd>Esc</kbd> or clicking the chord again), they stay closed: later chords just play, with the chord info still updating in the sidebar on wide screens. The **Details** button in the bottom bar turns them back on (and shows them for the chord that's playing).
 - **Block or arpeggio** playback.
 - **Playable 88-key keyboard** fixed at the bottom: highlights the sounding notes (root in red), labels them, scrolls to them, and plays notes when you click, drag across or tap the keys.
 - **Smart pitch clamping** — voicings are moved down whole octaves until they sit at or below C7, so high inversions of extended chords don't get shrill.
 - **Made for phones too** — tapping a chord opens one sheet above the piano with **Voicings** and **About** tabs (a side panel in landscape), instead of popups. The header fits in two rows, buttons are finger-sized, piano keys get wider and scroll to whatever plays, and the layout keeps clear of the iPhone notch and home indicator.
 - **7 languages** — English, Español, Français, Deutsch, Italiano, Português and Català, switchable from the 🌐 picker in the header. Everything is translated: controls, chord names, the chord info panel (interval names, recipes, descriptions, keys and scales) and the screen-reader labels (German even reads the root keys as Cis, Es, B and H). The first visit follows your browser's language. Note names stay as letters (C D E…), as in international chord symbols.
-- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab, language, key) between visits.
+- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab, details on/off, language, key) between visits.
 - **Dark mode** that follows your system setting.
 - **Loading progress** for the piano samples, with a clear message if they can't be loaded.
 
@@ -72,9 +73,9 @@ Then open `http://localhost:8080/` in your browser.
 1. Wait for the "Piano ready" message (chords can be browsed while it loads).
 2. Pick a root note on the small keyboard (highlighted in red). Use ♯/♭ to choose how black-key roots are spelled.
 3. Click a chord to hear it. Its voicings open in a popup next to it; click one to hear that voicing. The chord info panel explains whatever is playing.
-   On phones and tablets, the voicings and the chord info share a sheet above the piano: switch between them with the **Voicings** / **About** tabs, and reopen the sheet with the ⓘ button.
+   On phones and tablets, the voicings and the chord info share a sheet above the piano: switch between them with the **Voicings** / **About** tabs; the ⓘ **Details** button turns the sheet on or off.
 4. To stay in one key, choose it with **Key** above the chords and its mode next to it (major, Dorian, Mixolydian…). Its main chords are at the top; pick a root to jump to the chords on that degree. Choose **Any** to see every chord on the root again.
-5. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again (on wide screens, clicking elsewhere works too). Clicking another chord switches straight to it.
+5. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again: it then stays closed for the next chords, until you press **Details** in the bottom bar. (On wide screens, clicking elsewhere also closes the popup, just for that chord.) Clicking another chord while it's open switches straight to it.
 6. Pick the interface language with the 🌐 button next to the octave selector.
 7. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
 8. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.

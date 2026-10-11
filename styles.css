@@ -1241,7 +1241,7 @@ select, .chord-filter {
     fill: currentColor;
 }
 
-/* Opens the chord sheet (compact screens only) */
+/* Details on/off: the voicings popup (wide screens) or the chord sheet (compact ones) */
 .info-toggle {
     display: inline-flex;
     align-items: center;
@@ -1262,20 +1262,14 @@ select, .chord-filter {
     fill: currentColor;
 }
 
-.info-toggle[aria-expanded="true"] {
+/* Pressed = details open whenever a chord is clicked; off = chords just play */
+.info-toggle[aria-pressed="true"] {
     background: var(--primary-soft);
+    border-color: var(--primary);
 }
 
-.info-toggle:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-
-/* Wide screens show the info as a sidebar, so the toggle isn't needed */
-@media (min-width: 1000px) {
-    .info-toggle {
-        display: none;
-    }
+.info-toggle[aria-pressed="false"] {
+    color: var(--muted);
 }
 
 /* Compact screens: the buttons stay on the first row, note chips get a row of their own */

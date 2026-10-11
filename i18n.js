@@ -76,7 +76,7 @@
         'arpeggio': 'Arpeggio',
         'arpeggio.title': 'Play the notes one after another',
         'details': 'Details',
-        'details.title': 'Voicings and chord info',
+        'details.title': 'Show voicings and chord info when a chord is played (on/off)',
 
         'status.theoryFailed': 'Couldn’t load the music theory library. Check your connection and reload the page.',
         'status.audioFailed': 'Couldn’t load the audio library, so the piano is silent. Check your connection and reload the page.',
@@ -270,7 +270,7 @@
         'arpeggio': 'Arpegio',
         'arpeggio.title': 'Tocar las notas una tras otra',
         'details': 'Detalles',
-        'details.title': 'Disposiciones e información del acorde',
+        'details.title': 'Mostrar disposiciones e información al tocar un acorde (sí/no)',
 
         'status.theoryFailed': 'No se pudo cargar la biblioteca de teoría musical. Comprueba la conexión y recarga la página.',
         'status.audioFailed': 'No se pudo cargar la biblioteca de audio, así que el piano no suena. Comprueba la conexión y recarga la página.',
@@ -498,7 +498,7 @@
         'arpeggio': 'Arpège',
         'arpeggio.title': 'Jouer les notes l’une après l’autre',
         'details': 'Détails',
-        'details.title': 'Dispositions et infos sur l’accord',
+        'details.title': 'Afficher les dispositions et les infos quand un accord est joué (oui/non)',
 
         'status.theoryFailed': 'Impossible de charger la bibliothèque de théorie musicale. Vérifiez votre connexion et rechargez la page.',
         'status.audioFailed': 'Impossible de charger la bibliothèque audio : le piano est muet. Vérifiez votre connexion et rechargez la page.',
@@ -732,7 +732,7 @@
         'arpeggio': 'Arpeggio',
         'arpeggio.title': 'Die Töne nacheinander spielen',
         'details': 'Details',
-        'details.title': 'Voicings und Akkord-Infos',
+        'details.title': 'Voicings und Akkord-Infos beim Spielen eines Akkords zeigen (ein/aus)',
 
         'status.theoryFailed': 'Die Musiktheorie-Bibliothek konnte nicht geladen werden. Prüfe die Verbindung und lade die Seite neu.',
         'status.audioFailed': 'Die Audio-Bibliothek konnte nicht geladen werden, das Klavier bleibt stumm. Prüfe die Verbindung und lade die Seite neu.',
@@ -959,7 +959,7 @@
         'arpeggio': 'Arpeggio',
         'arpeggio.title': 'Suona le note una dopo l’altra',
         'details': 'Dettagli',
-        'details.title': 'Disposizioni e informazioni sull’accordo',
+        'details.title': 'Mostra disposizioni e informazioni quando si suona un accordo (sì/no)',
 
         'status.theoryFailed': 'Impossibile caricare la libreria di teoria musicale. Controlla la connessione e ricarica la pagina.',
         'status.audioFailed': 'Impossibile caricare la libreria audio, quindi il pianoforte è muto. Controlla la connessione e ricarica la pagina.',
@@ -1187,7 +1187,7 @@
         'arpeggio': 'Arpejo',
         'arpeggio.title': 'Tocar as notas uma após a outra',
         'details': 'Detalhes',
-        'details.title': 'Disposições e informações do acorde',
+        'details.title': 'Mostrar disposições e informações ao tocar um acorde (sim/não)',
 
         'status.theoryFailed': 'Não foi possível carregar a biblioteca de teoria musical. Verifique a ligação e recarregue a página.',
         'status.audioFailed': 'Não foi possível carregar a biblioteca de áudio, por isso o piano não toca. Verifique a ligação e recarregue a página.',
@@ -1415,7 +1415,7 @@
         'arpeggio': 'Arpegi',
         'arpeggio.title': 'Toca les notes una darrere l’altra',
         'details': 'Detalls',
-        'details.title': 'Disposicions i informació de l’acord',
+        'details.title': 'Mostra disposicions i informació en tocar un acord (sí/no)',
 
         'status.theoryFailed': 'No s’ha pogut carregar la biblioteca de teoria musical. Comprova la connexió i torna a carregar la pàgina.',
         'status.audioFailed': 'No s’ha pogut carregar la biblioteca d’àudio, així que el piano no sona. Comprova la connexió i torna a carregar la pàgina.',

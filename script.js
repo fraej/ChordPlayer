@@ -33,6 +33,7 @@
         octave: 4,
         playStyle: 'block',     // 'block' | 'arpeggio'
         sheetTab: 'about',      // tab shown in the sheet on compact screens: 'voicings' | 'about'
+        showDetails: true,      // open the voicings popup / sheet when a chord is clicked
         language: null,         // interface language picked by the user, or null to follow the browser
         keyTonic: null,         // pitch class of the chosen key's tonic, or null to show every chord on the root
         keyScale: 'major',      // a ChordTheory.KEY_SCALE_IDS id: 'major', 'dorian' … 'minor', 'locrian', 'harmonic', 'melodic'
@@ -165,18 +166,16 @@
         ui.chordGroups.addEventListener('click', handleChordClick);
         ui.popupBody.addEventListener('click', handleVoicingClick);
         ui.sheetVoicings.addEventListener('click', handleVoicingClick);
-        ui.popupClose.addEventListener('click', () => closeChordView({ restoreFocus: true }));
-        ui.infoClose.addEventListener('click', () => closeChordView({ restoreFocus: true }));
+        ui.popupClose.addEventListener('click', hideDetails);
+        ui.infoClose.addEventListener('click', hideDetails);
         ui.sheetTabs.forEach(tab => {
             tab.addEventListener('click', () => setSheetTab(tab.dataset.tab));
         });
         ui.replay.addEventListener('click', replay);
-        ui.infoToggle.addEventListener('click', toggleSheet);
+        ui.infoToggle.addEventListener('click', toggleDetails);
 
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape' && view) {
-                closeChordView({ restoreFocus: true });
-            }
+            if (event.key === 'Escape' && view) hideDetails();
         });
         // On wide screens a click elsewhere closes the popup; other chords switch it,
         // and clicks on the dock or the info sidebar leave it open
@@ -386,6 +385,9 @@
         if (saved.sheetTab === 'voicings' || saved.sheetTab === 'about') {
             state.sheetTab = saved.sheetTab;
         }
+        if (typeof saved.showDetails === 'boolean') {
+            state.showDetails = saved.showDetails;
+        }
         if (window.I18n && saved.language in I18n.LANGUAGES) {
             state.language = saved.language;
         }
@@ -398,10 +400,10 @@
     }
 
     function saveSettings() {
-        const { rootPc, accidentals, octave, playStyle, sheetTab, language, keyTonic, keyScale } = state;
+        const { rootPc, accidentals, octave, playStyle, sheetTab, showDetails, language, keyTonic, keyScale } = state;
         try {
             localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-                rootPc, accidentals, octave, playStyle, sheetTab, language, keyTonic, keyScale
+                rootPc, accidentals, octave, playStyle, sheetTab, showDetails, language, keyTonic, keyScale
             }));
         } catch (error) {
             // Storage unavailable (e.g. private browsing): settings just won't persist
@@ -510,10 +512,12 @@
         play(chord, { notes: ChordTheory.closeVoicing(pitchClasses, 0, state.octave), type: 'close', inversion: 0 });
 
         if (view && view.button === button) {
-            closeChordView(); // a second click on the same chord hides its voicings
-        } else {
+            hideDetails(); // a second click on the same chord hides the details
+        } else if (state.showDetails) {
             // Keyboard activation (detail 0) moves focus into the popup or sheet
             openChordView(button, chord, { focus: event.detail === 0 });
+        } else {
+            closeChordView(); // details are off: just play (and drop any stale view)
         }
     }
 
@@ -553,6 +557,7 @@
             ui.popup.hidden = false;
             positionPopup(button);
         }
+        syncSheetControls();
 
         if (focus) {
             const target = compact && state.sheetTab === 'about'
@@ -667,15 +672,33 @@
         return isCompact() && document.body.classList.contains('sheet-open');
     }
 
-    // The Details button in the dock: reopen the sheet for whatever played last
-    function toggleSheet() {
-        if (isSheetOpen()) {
-            closeChordView();
-        } else if (state.lastPlayed) {
+    /**
+     * Close the popup or sheet because the user asked to (✕, Esc, the chord again or the
+     * Details button), and keep it closed for the next chords until Details is pressed.
+     */
+    function hideDetails() {
+        state.showDetails = false;
+        saveSettings();
+        closeChordView({ restoreFocus: true });
+        syncSheetControls();
+    }
+
+    // The Details button in the dock: hides the details, or turns them back on and
+    // shows them for whatever played last
+    function toggleDetails() {
+        if (view) {
+            hideDetails();
+            return;
+        }
+        state.showDetails = true;
+        saveSettings();
+        syncSheetControls();
+        if (state.lastPlayed) {
             const { chord } = state.lastPlayed;
             const button = ui.chordGroups.querySelector(
                 `.chord-button[data-id="${CSS.escape(chord.entry.id)}"][data-tonic="${CSS.escape(chord.tonic)}"]`);
-            openChordView(button, chord);
+            // The popup needs its chord button to sit next to; the sheet doesn't
+            if (button || isCompact()) openChordView(button, chord);
         }
     }
 
@@ -688,8 +711,8 @@
     function syncSheetControls() {
         ui.info.dataset.tab = state.sheetTab;
         ui.sheetTabs.forEach(tab => tab.setAttribute('aria-pressed', String(tab.dataset.tab === state.sheetTab)));
-        ui.infoToggle.disabled = !state.lastPlayed;
-        ui.infoToggle.setAttribute('aria-expanded', String(isSheetOpen()));
+        ui.infoToggle.setAttribute('aria-pressed', String(state.showDetails));
+        ui.infoToggle.setAttribute('aria-expanded', String(Boolean(view)));
     }
 
     // Opening the sheet can cover the chord that was just tapped (or, in landscape,
