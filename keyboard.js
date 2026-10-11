@@ -120,6 +120,13 @@
             this.setNames(this.names);
         }
 
+        /** Dim the keys outside a set of pitch classes (e.g. a key's scale); null un-dims them all. */
+        setMarked(pitchClasses) {
+            this.keys.forEach(({ key }, pc) => {
+                key.classList.toggle('outside', Boolean(pitchClasses) && !pitchClasses.includes(pc));
+            });
+        }
+
         /** Mark a pitch class as selected without notifying the listener. */
         select(pc) {
             this.selected = pc;

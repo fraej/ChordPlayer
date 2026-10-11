@@ -34,6 +34,8 @@
         playStyle: 'block',     // 'block' | 'arpeggio'
         sheetTab: 'about',      // tab shown in the sheet on compact screens: 'voicings' | 'about'
         language: null,         // interface language picked by the user, or null to follow the browser
+        keyTonic: null,         // pitch class of the chosen key's tonic, or null to show every chord on the root
+        keyScale: 'major',      // 'major' | 'minor' | 'harmonic' | 'melodic'
         lastPlayed: null        // { chord, voicing }, for replay and the info panel
     };
 
@@ -76,6 +78,7 @@
         catalogue = ChordTheory.buildCatalogue();
         chordsById = new Map(catalogue.flatMap(group => group.chords).map(entry => [entry.id, entry]));
 
+        renderKeyOptions();
         rootKeyboard = new RootKeyboard(ui.rootKeyboard, {
             names: noteNames(),
             selected: state.rootPc,
@@ -107,6 +110,8 @@
         const infoElement = byId('chordInfo');
         ui = {
             rootName: byId('rootName'),
+            keyTonic: byId('keyTonic'),
+            keyScale: byId('keyScale'),
             language: byId('language'),
             languageCode: document.querySelector('.language-code'),
             rootKeyboard: byId('rootKeyboard'),
@@ -140,6 +145,8 @@
 
     function bindEvents() {
         ui.language.addEventListener('change', () => setLanguage(ui.language.value));
+        ui.keyTonic.addEventListener('change', () => setKey(ui.keyTonic.value === '' ? null : Number(ui.keyTonic.value), state.keyScale));
+        ui.keyScale.addEventListener('change', () => setKey(state.keyTonic, ui.keyScale.value));
         ui.octave.addEventListener('change', () => {
             state.octave = Number(ui.octave.value);
             closeChordView();
@@ -255,6 +262,7 @@
         if (!catalogue) return; // the theory library didn't load: only the fixed text changes
 
         closeChordView();
+        renderKeyOptions();
         rootKeyboard.setLabels({ label: t('rootNote'), spokenName });
         piano.setLabel(t('pianoKeyboard'));
         renderChords();
@@ -275,11 +283,56 @@
         state.accidentals = accidentals;
         closeChordView();
         rootKeyboard.setNames(noteNames());
+        renderKeyOptions(); // key names like F♯/G♭ follow the preference
         syncControls();
         renderChords();
-        renderChordInfo(); // key names like F♯/G♭ follow the preference
+        renderChordInfo();
         saveSettings();
     }
+
+    /** Show only the chords of a key (tonic pitch class + scale id), or every chord with a null tonic. */
+    function setKey(tonicPc, scale) {
+        state.keyTonic = tonicPc;
+        state.keyScale = scale;
+        // Start from the key's home chord
+        if (tonicPc !== null) state.rootPc = tonicPc;
+        closeChordView();
+        renderKeyOptions();
+        syncControls();
+        renderChords();
+        saveSettings();
+        // Show the top of the list, where the key's first degree now is
+        if (ui.chordSection.getBoundingClientRect().top < 0) {
+            ui.chordSection.scrollIntoView({ block: 'start' });
+        }
+    }
+
+    // Tonic names depend on the scale (D♭ major but C♯ minor) and on ♯/♭ for F♯/G♭ and D♯/E♭
+    function renderKeyOptions() {
+        const any = el('option', null, t('key.all'));
+        any.value = '';
+        ui.keyTonic.replaceChildren(any, ...Array.from({ length: 12 }, (_, pc) => {
+            const option = el('option', null,
+                ChordTheory.formatNote(ChordTheory.keyTonicName(pc, state.keyScale, state.accidentals)));
+            option.value = String(pc);
+            return option;
+        }));
+        const scaleLabels = { major: 'mode.major', minor: 'mode.minor', harmonic: 'mode.minor.harmonic', melodic: 'mode.minor.melodic' };
+        ui.keyScale.replaceChildren(...ChordTheory.KEY_SCALE_IDS.map(id => {
+            const option = el('option', null, t(scaleLabels[id]));
+            option.value = id;
+            return option;
+        }));
+    }
+
+    /** Pitch classes of the chosen key's scale, or null when no key is chosen. */
+    function keyPitchClasses() {
+        if (state.keyTonic === null) return null;
+        return ChordTheory.keyChords([], state.keyTonic, state.keyScale, state.accidentals)
+            .map(degree => pitchClassOf(degree.root));
+    }
+
+    const pitchClassOf = note => ChordTheory.midi(`${note}4`) % 12;
 
     function setPlayStyle(playStyle) {
         state.playStyle = playStyle;
@@ -290,6 +343,12 @@
     function syncControls() {
         ui.rootName.textContent = ChordTheory.formatNote(rootName());
         ui.octave.value = String(state.octave);
+        ui.keyTonic.value = state.keyTonic === null ? '' : String(state.keyTonic);
+        ui.keyScale.value = state.keyScale;
+        ui.keyScale.hidden = state.keyTonic === null;
+        document.body.classList.toggle('key-mode', state.keyTonic !== null);
+        rootKeyboard.select(state.rootPc);
+        rootKeyboard.setMarked(keyPitchClasses());
         ui.accidentalButtons.forEach(button => {
             button.setAttribute('aria-pressed', String(button.dataset.accidentals === state.accidentals));
         });
@@ -323,12 +382,20 @@
         if (window.I18n && saved.language in I18n.LANGUAGES) {
             state.language = saved.language;
         }
+        if (['major', 'minor', 'harmonic', 'melodic'].includes(saved.keyScale)) {
+            state.keyScale = saved.keyScale;
+        }
+        if (Number.isInteger(saved.keyTonic) && saved.keyTonic >= 0 && saved.keyTonic < 12) {
+            state.keyTonic = saved.keyTonic;
+        }
     }
 
     function saveSettings() {
-        const { rootPc, accidentals, octave, playStyle, sheetTab, language } = state;
+        const { rootPc, accidentals, octave, playStyle, sheetTab, language, keyTonic, keyScale } = state;
         try {
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify({ rootPc, accidentals, octave, playStyle, sheetTab, language }));
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+                rootPc, accidentals, octave, playStyle, sheetTab, language, keyTonic, keyScale
+            }));
         } catch (error) {
             // Storage unavailable (e.g. private browsing): settings just won't persist
         }
@@ -346,20 +413,43 @@
         return element;
     }
 
+    /**
+     * Without a key: every chord type on the selected root, grouped by kind.
+     * With a key: the chords of that key, one group per scale degree (I, ii, iii…),
+     * with the selected root's degree marked.
+     */
     function renderChords() {
-        const tonic = rootName();
-        const sections = catalogue.map(group => el('section', 'chord-group',
-            el('h3', 'chord-group-title', ChordTheory.groupTitle(group)),
-            el('div', 'chord-grid', group.chords.map(entry => createChordButton(entry, tonic)))
-        ));
+        const group = (title, buttons) => el('section', 'chord-group',
+            el('h3', 'chord-group-title', title),
+            el('div', 'chord-grid', buttons));
+
+        let sections;
+        if (state.keyTonic === null) {
+            const tonic = rootName();
+            sections = catalogue.map(chordGroup => group(ChordTheory.groupTitle(chordGroup),
+                chordGroup.chords.map(entry => createChordButton(entry, tonic))));
+        } else {
+            sections = ChordTheory.keyChords(catalogueEntries(), state.keyTonic, state.keyScale, state.accidentals)
+                .map(degree => {
+                    const title = [el('span', 'degree-numeral', degree.numeral), ` · ${ChordTheory.formatNote(degree.root)}`];
+                    const section = group(title,
+                        degree.chords.map(({ entry, numeral }) => createChordButton(entry, degree.root, numeral)));
+                    section.classList.toggle('current-degree', pitchClassOf(degree.root) === state.rootPc);
+                    return section;
+                });
+        }
         ui.chordGroups.replaceChildren(...sections);
         applyFilter();
     }
 
-    function createChordButton(entry, tonic) {
+    const catalogueEntries = () => catalogue.flatMap(chordGroup => chordGroup.chords);
+
+    /** A chord button; `numeral` (e.g. "V7") is its function in the chosen key, if any. */
+    function createChordButton(entry, tonic, numeral = null) {
         const symbol = ChordTheory.chordSymbol(tonic, entry);
         const notes = ChordTheory.chordNotes(entry.id, tonic).map(ChordTheory.formatNote);
         const name = ChordTheory.chordName(entry);
+        const subtitle = name || entry.degrees.join(' ');
         const count = el('span', 'note-count', String(entry.size));
         count.setAttribute('aria-hidden', 'true');
 
@@ -367,13 +457,14 @@
             el('span', 'chord-info',
                 el('span', 'chord-symbol', symbol),
                 // Many chord types have no name in Tonal; show their formula instead
-                el('span', 'chord-name', name || entry.degrees.join(' '))),
+                el('span', 'chord-name', numeral ? [el('b', 'chord-numeral', numeral), ` ${subtitle}`] : subtitle)),
             count);
         button.type = 'button';
         button.dataset.id = entry.id;
+        button.dataset.tonic = tonic;
         button.setAttribute('aria-haspopup', 'dialog');
         button.setAttribute('aria-expanded', 'false');
-        button.title = `${symbol}${name ? ` (${name})` : ''}: ${notes.join(' ')} · ${entry.degrees.join(' ')}`;
+        button.title = `${numeral ? `${numeral} · ` : ''}${symbol}${name ? ` (${name})` : ''}: ${notes.join(' ')} · ${entry.degrees.join(' ')}`;
         return button;
     }
 
@@ -399,7 +490,7 @@
         if (!button) return;
 
         const entry = chordsById.get(button.dataset.id);
-        const tonic = rootName();
+        const tonic = button.dataset.tonic;
         const pitchClasses = ChordTheory.chordNotes(entry.id, tonic);
         if (pitchClasses.length === 0) return;
         const chord = { entry, tonic, pitchClasses };
@@ -570,9 +661,8 @@
             closeChordView();
         } else if (state.lastPlayed) {
             const { chord } = state.lastPlayed;
-            const button = chord.tonic === rootName()
-                ? ui.chordGroups.querySelector(`.chord-button[data-id="${CSS.escape(chord.entry.id)}"]`)
-                : null;
+            const button = ui.chordGroups.querySelector(
+                `.chord-button[data-id="${CSS.escape(chord.entry.id)}"][data-tonic="${CSS.escape(chord.tonic)}"]`);
             openChordView(button, chord);
         }
     }

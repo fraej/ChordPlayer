@@ -57,6 +57,12 @@
         <section id="chordSection" class="chord-section" aria-labelledby="chordsHeading">
             <div class="section-header">
                 <h2 id="chordsHeading" data-i18n="chords">Chords</h2>
+                <!-- Optional key: only the chords that belong to it, degree by degree -->
+                <div class="key-control" title="Only show the chords that belong to a key" data-i18n-attr="title:key.title">
+                    <label for="keyTonic" data-i18n="key">Key</label>
+                    <select id="keyTonic"></select>
+                    <select id="keyScale" aria-label="Mode" data-i18n-attr="aria-label:key.mode" hidden></select>
+                </div>
                 <input type="search" id="chordFilter" class="chord-filter"
                        placeholder="Filter: m7, sus, ♭9, minor…" aria-label="Filter chords"
                        data-i18n-attr="placeholder:filter.placeholder; aria-label:filter.label"

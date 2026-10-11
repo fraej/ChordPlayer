@@ -11,6 +11,7 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 - **Root selection** via a compact piano keyboard (click it, or Tab to it and use the arrow keys).
 - **Sharps or flats** — a ♯/♭ toggle respells black-key roots, so you get B♭ D F instead of A♯ C♯♯ E♯.
 - **Every chord type from Tonal.js** (107 of them), grouped under headings: triads → sevenths → sixths & added tones → extended → altered dominants → everything else.
+- **Key filter** — pick a key (e.g. G major, A harmonic minor) to see only the chords that belong to it, grouped by scale degree (I · G, ii · A … vii° · F♯), each labelled with its Roman numeral (V7, iiø7…). Notes outside the key are greyed out on the root picker, and the root's degree is marked. Major, natural minor, harmonic minor and melodic minor are available.
 - **Chord filter** — type `m7`, `sus`, `♭9` (or `b9`), `minor`… to narrow the list.
 - **Voicings & inversions** — close and open position voicings grouped by inversion in a popup next to the chord; click any of them to hear it.
 - **Correct spelling everywhere** — notes are shown as they're spelled in the chord (C7 shows B♭, not A♯), with ♯/♭ symbols and scale degrees.
@@ -28,7 +29,7 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 - **Smart pitch clamping** — voicings are moved down whole octaves until they sit at or below C7, so high inversions of extended chords don't get shrill.
 - **Made for phones too** — tapping a chord opens one sheet above the piano with **Voicings** and **About** tabs (a side panel in landscape), instead of popups. The header fits in two rows, buttons are finger-sized, piano keys get wider and scroll to whatever plays, and the layout keeps clear of the iPhone notch and home indicator.
 - **7 languages** — English, Español, Français, Deutsch, Italiano, Português and Català, switchable from the 🌐 picker in the header. Everything is translated: controls, chord names, the chord info panel (interval names, recipes, descriptions, keys and scales) and the screen-reader labels (German even reads the root keys as Cis, Es, B and H). The first visit follows your browser's language. Note names stay as letters (C D E…), as in international chord symbols.
-- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab, language) between visits.
+- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab, language, key) between visits.
 - **Dark mode** that follows your system setting.
 - **Loading progress** for the piano samples, with a clear message if they can't be loaded.
 
@@ -72,10 +73,11 @@ Then open `http://localhost:8080/` in your browser.
 2. Pick a root note on the small keyboard (highlighted in red). Use ♯/♭ to choose how black-key roots are spelled.
 3. Click a chord to hear it. Its voicings open in a popup next to it; click one to hear that voicing. The chord info panel explains whatever is playing.
    On phones and tablets, the voicings and the chord info share a sheet above the piano: switch between them with the **Voicings** / **About** tabs, and reopen the sheet with the ⓘ button.
-4. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again (on wide screens, clicking elsewhere works too). Clicking another chord switches straight to it.
-5. Pick the interface language with the 🌐 button next to the octave selector.
-6. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
-7. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
+4. To stay in one key, choose it with **Key** above the chords (and its mode next to it); choose **Any** to see every chord on the root again.
+5. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again (on wide screens, clicking elsewhere works too). Clicking another chord switches straight to it.
+6. Pick the interface language with the 🌐 button next to the octave selector.
+7. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
+8. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
 
 ## Project Structure
 
@@ -105,7 +107,7 @@ Uses `Tone.Sampler` with a sparse sample map (A, C, D♯, F♯ across octaves) t
 - **Translations** live in `i18n.js`, one table per language; `I18n.t(key, vars)` fills `{placeholders}`, and a few entries are functions where grammar needs it (ordinal inversions, interval names, German note names). Missing keys fall back to English. Static markup is translated through `data-i18n` / `data-i18n-attr` attributes. To add a language, copy the English table, translate it and add it to `LANGUAGES` and `STRINGS`.
 - Chords are looked up with `Tonal.Chord.getChord(type, tonic)` rather than by joining strings, which Tonal can misread (for example "C" + "b9sus" parses as a C♭ chord).
 - Voicing generation uses a MIDI-ceiling approach (`MIDI 96 = C7`) to keep inversions of extended chords in a comfortable range.
-- Key membership (the "In keys" list) checks that every chord tone sits on its own scale degree, not just that the pitches are in the scale. That keeps symmetrical chords honest: C°7 shows up as vii°7 in C♯/D♭ harmonic minor, not as a chord on the 6th degree of E minor. Altered dominants (7♯9, 7alt) therefore belong to no key; the panel points to their scales instead.
+- Key membership (the "In keys" list) checks that every chord tone sits on its own scale degree, not just that the pitches are in the scale. That keeps symmetrical chords honest: C°7 shows up as vii°7 in C♯/D♭ harmonic minor, not as a chord on the 6th degree of E minor. Altered dominants (7♯9, 7alt) therefore belong to no key; the panel points to their scales instead. The key filter uses the same check to decide which chords a key lists.
 
 ## Potential Improvements
 

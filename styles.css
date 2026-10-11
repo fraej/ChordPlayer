@@ -371,6 +371,20 @@ select, .chord-filter {
     stroke-width: 3;
 }
 
+/* With a key chosen, notes outside its scale are greyed out */
+.root-keyboard .key.white.outside:not(.selected) rect {
+    fill: color-mix(in srgb, var(--key-white) 72%, var(--key-border));
+}
+
+.root-keyboard .key.black.outside:not(.selected) rect {
+    fill: color-mix(in srgb, var(--key-black) 55%, var(--key-white));
+    stroke: color-mix(in srgb, var(--key-black) 55%, var(--key-white));
+}
+
+.root-keyboard .key.outside:not(.selected) text {
+    opacity: 0.4;
+}
+
 .root-keyboard text {
     font-size: 10px;
     text-anchor: middle;
@@ -417,6 +431,45 @@ select, .chord-filter {
 .chord-filter {
     flex: 0 1 300px;
     min-width: 0;
+}
+
+/* "Key: [Any ▾]", plus the mode once a key is chosen */
+.key-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: auto;
+    font-size: 0.9em;
+    color: var(--muted);
+}
+
+.key-control select {
+    padding: 4px 8px;
+    color: var(--text);
+}
+
+.key-mode .key-control select {
+    border-color: var(--primary);
+}
+
+/* In key mode each chord shows its function in the key, e.g. "V7" */
+.chord-numeral {
+    font-weight: 600;
+    color: var(--primary-strong);
+}
+
+/* Roman numerals keep their case: ii is minor, II major */
+.degree-numeral {
+    text-transform: none;
+}
+
+/* The scale degree of the selected root */
+.chord-group.current-degree .chord-group-title {
+    color: var(--root);
+}
+
+.chord-group.current-degree .chord-group-title::after {
+    content: " ●";
 }
 
 .chord-group + .chord-group {

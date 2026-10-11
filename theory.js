@@ -377,11 +377,13 @@
     }
 
     const KEY_SCALES = [
-        { mode: 'major', steps: [0, 2, 4, 5, 7, 9, 11] },
-        { mode: 'minor', steps: [0, 2, 3, 5, 7, 8, 10] },
-        { mode: 'minor', variant: 'harmonic', steps: [0, 2, 3, 5, 7, 8, 11] },
-        { mode: 'minor', variant: 'melodic', steps: [0, 2, 3, 5, 7, 9, 11] }
+        { id: 'major', mode: 'major', tonal: 'major', steps: [0, 2, 4, 5, 7, 9, 11] },
+        { id: 'minor', mode: 'minor', tonal: 'minor', steps: [0, 2, 3, 5, 7, 8, 10] },
+        { id: 'harmonic', mode: 'minor', variant: 'harmonic', tonal: 'harmonic minor', steps: [0, 2, 3, 5, 7, 8, 11] },
+        { id: 'melodic', mode: 'minor', variant: 'melodic', tonal: 'melodic minor', steps: [0, 2, 3, 5, 7, 9, 11] }
     ];
+    // Scales a key can be built on, for the key picker: 'major' | 'minor' | 'harmonic' | 'melodic'
+    const KEY_SCALE_IDS = KEY_SCALES.map(scale => scale.id);
     const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
     // Usual key names; the 6♯/6♭ ties (null) follow the sharp/flat preference
     const MAJOR_KEY_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', null, 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -407,17 +409,22 @@
      * scale degree, so C°7 is vii°7 in D♭ minor but not a chord on the 6th of E minor,
      * even though the same four pitches are in that scale.
      */
+    /** Whether a chord built on a scale degree (0-6) keeps every tone on its own degree of the scale. */
+    function fitsDegree(entry, steps, degree) {
+        return entry.intervals.every(interval => {
+            const { num, semitones } = Tonal.Interval.get(interval);
+            const step = steps[(degree + num - 1) % 7] - steps[degree];
+            return mod12(step) === mod12(semitones);
+        });
+    }
+
     function keyFunctions(entry, rootPc) {
         const found = new Map();
         for (const scale of KEY_SCALES) {
             for (let tonicPc = 0; tonicPc < 12; tonicPc++) {
                 const degree = scale.steps.indexOf(mod12(rootPc - tonicPc));
                 if (degree < 0) continue;
-                const fits = entry.intervals.every(interval => {
-                    const { num, semitones } = Tonal.Interval.get(interval);
-                    const step = scale.steps[(degree + num - 1) % 7] - scale.steps[degree];
-                    return mod12(step) === mod12(semitones);
-                });
+                const fits = fitsDegree(entry, scale.steps, degree);
                 // Natural minor comes first, so the harmonic/melodic tag only shows when needed
                 const id = `${scale.mode}:${tonicPc}:${degree}`;
                 if (fits && !found.has(id)) {
@@ -432,6 +439,36 @@
     function keyName(tonicPc, mode, accidentals) {
         const names = mode === 'major' ? MAJOR_KEY_NAMES : MINOR_KEY_NAMES;
         return names[mod12(tonicPc)] || pitchClassName(tonicPc, accidentals);
+    }
+
+    /** Usual spelling of a key's tonic, e.g. (10, 'major') -> "Bb", (8, 'minor') -> "G#". */
+    function keyTonicName(tonicPc, scaleId, accidentals) {
+        const scale = KEY_SCALES.find(candidate => candidate.id === scaleId) || KEY_SCALES[0];
+        return keyName(tonicPc, scale.mode, accidentals);
+    }
+
+    /**
+     * The chords that belong to a key, degree by degree:
+     * [{ degree, root, numeral, chords: [{ entry, numeral }] }], where `root` is the
+     * degree's note spelled as in the key ("Bb" in F major), `numeral` the degree's
+     * triad (I, ii, vii°…) and `chords` the catalogue entries, in catalogue order,
+     * whose every tone is on its own degree of the scale.
+     */
+    function keyChords(entries, tonicPc, scaleId, accidentals) {
+        const scale = KEY_SCALES.find(candidate => candidate.id === scaleId) || KEY_SCALES[0];
+        const roots = Tonal.Scale.get(`${keyName(tonicPc, scale.mode, accidentals)} ${scale.tonal}`).notes;
+        return scale.steps.map((step, degree) => {
+            const chords = entries
+                .filter(entry => fitsDegree(entry, scale.steps, degree))
+                .map(entry => ({ entry, numeral: romanNumeral(degree, entry) }));
+            const triad = chords.find(({ entry }) => ['M', 'm', 'dim', 'aug'].includes(entry.id));
+            return {
+                degree,
+                root: roots[degree],
+                numeral: triad ? triad.numeral : NUMERALS[degree],
+                chords
+            };
+        });
     }
 
     // Common scales to suggest over a chord, in order of preference (Tonal names;
@@ -527,6 +564,9 @@
         chordRecipe,
         figuredBass,
         keyFunctions,
+        KEY_SCALE_IDS,
+        keyTonicName,
+        keyChords,
         fittingScales,
         describeChord,
         describeVoicing,
