@@ -88,6 +88,7 @@ styles.css      Styling, layout, dark mode
 i18n.js         Interface languages: string tables for en, es, fr, de, it, pt, ca
 theory.js       Music theory: chord catalogue, spelling, voicings, chord info (no DOM)
 keyboard.js     SVG keyboard components: RootKeyboard and PianoKeyboard
+piano.js        PianoSampler: low-latency piano sample playback on Tone.js
 script.js       App logic: UI wiring, voicing popup / sheet, chord info, audio, settings
 LICENSE         GPLv3
 ```
@@ -99,7 +100,15 @@ LICENSE         GPLv3
 
 ## Audio
 
-Uses `Tone.Sampler` with a sparse sample map (A, C, D♯, F♯ across octaves) that Tone.js pitch-shifts in between. The samples are loaded one by one so the app can show progress, as Ogg (or MP3 where Ogg isn't supported, e.g. Safari). Release is set to 1 second. To keep the delay between pressing and hearing small: notes are scheduled for the current audio time (no look-ahead); chord, voicing and replay buttons sound as the mouse button goes down rather than on release (touch still waits for the tap to end, so scrolling the chord list doesn't play chords); the sound is started before the page redraws the chord info; and each sample's silent lead-in is trimmed to 2 ms before its attack. Browsers only allow audio to start after a user gesture, so the audio context is resumed on the first click, tap or key press.
+Plays the Salamander samples through `PianoSampler` (`piano.js`), a small sampler built on Tone.js: a sparse sample map (A, C, D♯, F♯ across octaves) pitch-shifted in between, like `Tone.Sampler`, but with a gain per note so a note scheduled a few milliseconds ahead can still be cancelled. The samples are loaded one by one so the app can show progress, as Ogg (or MP3 where Ogg isn't supported, e.g. Safari), and each sample's silent lead-in is trimmed to 2 ms before its attack. Release is 1 second. Browsers only allow audio to start after a user gesture, so the audio context is resumed on the first click, tap or key press.
+
+Keeping the press-to-sound delay small:
+- Notes are scheduled on the audio clock for "now" (no look-ahead), before the page redraws anything; arpeggios are scheduled on the audio clock too.
+- Mouse and pen: chord, voicing and replay buttons sound as the button goes down, not on release.
+- Touch: the sound is scheduled 30 ms ahead as soon as the finger lands, and the details open when the tap completes. If the finger moves first (scrolling the chord list), the note is cancelled before it sounds, or cut within ~30 ms if it already started. The audio clock is used because mobile browsers hold back page timers while a finger is down (a 30 ms timer fires after ~120 ms).
+- Piano keys sound on touch/press.
+
+What remains is the device's own audio output latency: Bluetooth headphones add ~150–250 ms, and some Android phones add 50 ms or more.
 
 ## Development Notes
 

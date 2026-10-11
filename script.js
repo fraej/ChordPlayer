@@ -22,6 +22,10 @@
         'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7', 'D#7', 'F#7', 'A7', 'C8'
     ];
     const ARPEGGIO_STEP_MS = 140;
+    // Touch: a pressed button sounds this long after the finger lands, unless it moves
+    // further than TOUCH_SLOP_PX first (it's scrolling), which cancels the sound
+    const TOUCH_HOLD_MS = 30;
+    const TOUCH_SLOP_PX = 10;
     const SETTINGS_KEY = 'chordPlayer.settings';
 
     // Interface text in the current language (see i18n.js)
@@ -44,8 +48,7 @@
         sampler: null,
         loadedSamples: 0,
         ready: false,
-        failed: false,
-        arpeggioTimers: []
+        failed: false
     };
 
     // Below this width the sheet replaces the voicing popup and the info sidebar
@@ -163,15 +166,20 @@
             closeChordView();
             applyFilter();
         });
-        onPress(ui.chordGroups, handleChordClick);
-        onPress(ui.popupBody, handleVoicingClick);
-        onPress(ui.sheetVoicings, handleVoicingClick);
+        const chordActions = { resolve: resolveChordButton, activate: activateChord };
+        const voicingActions = { resolve: resolveVoicingButton, activate: activateVoicing };
+        onPress(ui.chordGroups, '.chord-button', chordActions);
+        onPress(ui.popupBody, '.voicing-button', voicingActions);
+        onPress(ui.sheetVoicings, '.voicing-button', voicingActions);
         ui.popupClose.addEventListener('click', hideDetails);
         ui.infoClose.addEventListener('click', hideDetails);
         ui.sheetTabs.forEach(tab => {
             tab.addEventListener('click', () => setSheetTab(tab.dataset.tab));
         });
-        onPress(ui.replay, replay);
+        onPress(ui.replay, 'button', {
+            resolve: () => state.lastPlayed,
+            activate: (button, event, sounded) => replay(sounded)
+        });
         ui.infoToggle.addEventListener('click', toggleDetails);
 
         document.addEventListener('keydown', event => {
@@ -199,22 +207,65 @@
     }
 
     /**
-     * Run `handler` when a button inside `element` is pressed. With a mouse or pen that's
-     * as the button goes down: a click only fires once it's released, which delays the
-     * sound by however long the button is held (~100 ms). Touch still waits for the tap
-     * to end, so a finger that starts scrolling the chord list doesn't play anything.
-     * Keyboard activation (Enter/Space) arrives as a click with detail 0.
+     * Wire up buttons (matching `selector` inside `element`) that make a sound.
+     * `resolve(button)` says what the button plays ({ chord, voicing }, or null), and
+     * `activate(button, event, sounded)` does the full action, skipping the sound when
+     * it already started.
+     *
+     * A click only fires once the button is released, which delays the sound by however
+     * long it's held (~100 ms), so:
+     *  - mouse or pen: everything happens as the button goes down;
+     *  - touch: the sound is scheduled TOUCH_HOLD_MS ahead on the audio clock as soon
+     *    as the finger lands, and the rest (opening the details) waits for the tap to
+     *    complete. If the finger moves first (it's scrolling the list), the sound is
+     *    cancelled, or cut with a short fade if it already started, and nothing else
+     *    happens. (The audio clock is used because browsers hold back page timers while
+     *    a finger is down, to see whether it's going to scroll.)
+     *  - keyboard (Enter/Space): a click with detail 0, as before.
      */
-    function onPress(element, handler) {
-        let handledDown = false;
+    function onPress(element, selector, { resolve, activate }) {
+        let mouseHandled = false;
+        let touch = null;   // { pointerId, button, x, y, sounded }
+
+        const dropTouch = ({ cut }) => {
+            if (touch && cut && touch.sounded) cutSound();
+            touch = null;
+        };
+
         element.addEventListener('pointerdown', event => {
-            handledDown = event.pointerType !== 'touch' && event.button === 0;
-            if (handledDown) handler(event);
+            const button = event.target.closest(selector);
+            if (!button || !element.contains(button)) return;
+            if (event.pointerType === 'touch') {
+                const target = resolve(button);
+                touch = { pointerId: event.pointerId, button, x: event.clientX, y: event.clientY, sounded: false };
+                if (target) touch.sounded = sound(target.voicing.notes, { delay: TOUCH_HOLD_MS / 1000 });
+                return;
+            }
+            if (event.button !== 0) return;
+            mouseHandled = true;
+            activate(button, event, false);
         });
+
+        element.addEventListener('pointermove', event => {
+            if (touch && event.pointerId === touch.pointerId
+                && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > TOUCH_SLOP_PX) {
+                dropTouch({ cut: true });
+            }
+        }, { passive: true });
+        element.addEventListener('pointercancel', event => {
+            if (touch && event.pointerId === touch.pointerId) dropTouch({ cut: true });
+        });
+
         element.addEventListener('click', event => {
-            const duplicate = handledDown && event.detail > 0;
-            handledDown = false;
-            if (!duplicate) handler(event);
+            if (mouseHandled && event.detail > 0) {
+                mouseHandled = false; // already handled when the mouse button went down
+                return;
+            }
+            mouseHandled = false;
+            const button = event.target.closest(selector);
+            const sounded = Boolean(touch && touch.button === button && touch.sounded);
+            dropTouch({ cut: false });
+            if (button && element.contains(button)) activate(button, event, sounded);
         });
     }
 
@@ -522,17 +573,23 @@
         ui.noMatches.textContent = total > 0 ? '' : t('noMatches', { query: query.trim() });
     }
 
-    function handleChordClick(event) {
-        const button = event.target.closest('.chord-button');
-        if (!button) return;
-
+    /** What a chord button plays: its close root-position voicing. */
+    function resolveChordButton(button) {
         const entry = chordsById.get(button.dataset.id);
         const tonic = button.dataset.tonic;
         const pitchClasses = ChordTheory.chordNotes(entry.id, tonic);
-        if (pitchClasses.length === 0) return;
-        const chord = { entry, tonic, pitchClasses };
+        if (pitchClasses.length === 0) return null;
+        return {
+            chord: { entry, tonic, pitchClasses },
+            voicing: { notes: ChordTheory.closeVoicing(pitchClasses, 0, state.octave), type: 'close', inversion: 0 }
+        };
+    }
 
-        play(chord, { notes: ChordTheory.closeVoicing(pitchClasses, 0, state.octave), type: 'close', inversion: 0 });
+    function activateChord(button, event, sounded) {
+        const target = resolveChordButton(button);
+        if (!target) return;
+        const { chord, voicing } = target;
+        play(chord, voicing, { sounded });
 
         if (view && view.button === button) {
             hideDetails(); // a second click on the same chord hides the details
@@ -642,12 +699,16 @@
         return button;
     }
 
-    function handleVoicingClick(event) {
-        const button = event.target.closest('.voicing-button');
-        if (!button || !view) return;
+    function resolveVoicingButton(button) {
+        return view ? { chord: view.chord, voicing: view.voicings[Number(button.dataset.index)] } : null;
+    }
+
+    function activateVoicing(button, event, sounded) {
+        const target = resolveVoicingButton(button);
+        if (!target) return;
         view.container.querySelectorAll('.active-voicing').forEach(active => active.classList.remove('active-voicing'));
         button.classList.add('active-voicing');
-        play(view.chord, view.voicings[Number(button.dataset.index)]);
+        play(target.chord, target.voicing, { sounded });
     }
 
     // Place the popup below its chord button, or above it when there's more room
@@ -834,9 +895,9 @@
     // ---------------------------------------------------------------------
 
     /** Sound a voicing ({ notes, type, inversion }), light it up and describe it. */
-    function play(chord, voicing) {
+    function play(chord, voicing, { sounded = false } = {}) {
         state.lastPlayed = { chord, voicing };
-        sound(voicing.notes); // first, so redrawing the page doesn't hold up the sound
+        if (!sounded) sound(voicing.notes); // first, so redrawing the page doesn't hold up the sound
         showNowPlaying(chord, voicing);
         renderChordInfo();
         syncSheetControls();
@@ -848,32 +909,36 @@
         piano.revealHighlight();
     }
 
-    function replay() {
+    function replay(sounded = false) {
         if (!state.lastPlayed) return;
         const { chord, voicing } = state.lastPlayed;
-        play(chord, voicing);
+        play(chord, voicing, { sounded });
     }
 
-    function sound(notes) {
-        audio.arpeggioTimers.forEach(clearTimeout);
-        audio.arpeggioTimers = [];
-        if (!prepareAudio()) return;
+    /**
+     * Play notes as a block or an arpeggio, `delay` seconds from now, replacing whatever
+     * was sounding. Everything is scheduled on the audio clock, so a busy page can't
+     * hold notes up. Returns whether anything was played.
+     */
+    function sound(notes, { delay = 0 } = {}) {
+        if (!prepareAudio()) return false;
 
         // The sampler gets sharp-spelled names; it doesn't need the chord spelling
         const names = notes.map(note => ChordTheory.midiToNoteName(ChordTheory.midi(note)));
-        const now = Tone.immediate();
-        audio.sampler.releaseAll(now);
+        const start = Tone.immediate() + delay;
+        audio.sampler.releaseAll(start);
 
         if (state.playStyle === 'arpeggio') {
-            audio.sampler.triggerAttack(names[0], now);
-            names.slice(1).forEach((name, i) => {
-                audio.arpeggioTimers.push(setTimeout(() => {
-                    audio.sampler.triggerAttack(name, Tone.immediate());
-                }, (i + 1) * ARPEGGIO_STEP_MS));
-            });
+            names.forEach((name, i) => audio.sampler.triggerAttack(name, start + (i * ARPEGGIO_STEP_MS) / 1000));
         } else {
-            audio.sampler.triggerAttack(names, now);
+            audio.sampler.triggerAttack(names, start);
         }
+        return true;
+    }
+
+    /** Silence everything at once, including notes not started yet (a touch that turned into a scroll). */
+    function cutSound() {
+        if (audio.ready) audio.sampler.cut();
     }
 
     // Notes played on the 88-key piano
@@ -916,12 +981,13 @@
             const buffers = await Promise.all(SAMPLE_NOTES.map(async note => {
                 // Ogg where the browser supports it, MP3 otherwise (Safari)
                 const file = `${note.replace('#', 's')}.[ogg|mp3]`;
-                const buffer = trimLeadingSilence(await Tone.ToneAudioBuffer.fromUrl(SAMPLE_BASE_URL + file));
+                const buffer = await Tone.ToneAudioBuffer.fromUrl(SAMPLE_BASE_URL + file);
                 audio.loadedSamples++;
                 if (!audio.failed) showLoadingStatus();
                 return [note, buffer];
             }));
-            audio.sampler = new Tone.Sampler({ urls: Object.fromEntries(buffers), release: 1 }).toDestination();
+            audio.sampler = new PianoSampler({ release: 1 });
+            buffers.forEach(([note, buffer]) => audio.sampler.add(note, buffer));
             audio.ready = true;
             showStatus('status.ready', 'success', 2000);
         } catch (error) {
@@ -929,26 +995,6 @@
             console.error('Could not load the piano samples:', error);
             showStatus('status.samplesFailed', 'error');
         }
-    }
-
-    /**
-     * Cut the quiet lead-in before a sample's attack (silence in the recording, or the
-     * padding an MP3 encoder adds), so notes sound as soon as they're played. The cut
-     * starts 2 ms before the first sample that reaches 1% (-40 dB) of the peak.
-     */
-    function trimLeadingSilence(buffer) {
-        const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i));
-        let peak = 0;
-        channels.forEach(data => { for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i])); });
-        if (peak === 0) return buffer;
-        const threshold = peak * 0.01;
-        const onset = Math.min(...channels.map(data => {
-            let i = 0;
-            while (i < data.length && Math.abs(data[i]) < threshold) i++;
-            return i;
-        }));
-        const start = onset / buffer.sampleRate - 0.002;
-        return start > 0.001 ? buffer.slice(start) : buffer;
     }
 
     function showLoadingStatus() {
