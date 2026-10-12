@@ -12,6 +12,7 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 - **Sharps or flats** — a ♯/♭ toggle respells black-key roots, so you get B♭ D F instead of A♯ C♯♯ E♯.
 - **Every chord type from Tonal.js** (107 of them), grouped under headings: triads → sevenths → sixths & added tones → extended → altered dominants → everything else.
 - **Key filter** — pick a key (e.g. C major, D Dorian, A harmonic minor) to see only the chords that belong to it. **Main chords** comes first: the key's seven triads and seven seventh chords (C Dm Em F G Am B° / Cmaj7 Dm7 … Bø7). Below, every chord on each scale degree (I · C, ii · D … vii° · B), each labelled with its Roman numeral (V7, iiø7…). Notes outside the key are greyed out on the root picker; picking a root jumps to its degree. All seven modes (Ionian/major, Dorian, Phrygian, Lydian, Mixolydian, Aeolian/natural minor, Locrian) plus harmonic and melodic minor are available, spelled with the right key signature (F Locrian, not E♯ Locrian).
+- **My chords** — tap and hold any chord (or right-click it, or press the context-menu key) to add it to **My chords**, a row at the top of the list; hold it there to remove it. Use it as a palette to build a chord progression: tap the chords in any order, or press **▶ Play in order** to hear them one after another (1.2 s each, block or arpeggio), with the screen following along. Picked chords are marked ★ in the list, show their Roman numeral when a key is chosen, and are remembered between visits.
 - **Chord filter** — type `m7`, `sus`, `♭9` (or `b9`), `minor`… to narrow the list.
 - **Voicings & inversions** — close and open position voicings grouped by inversion in a popup next to the chord; click any of them to hear it.
 - **Correct spelling everywhere** — notes are shown as they're spelled in the chord (C7 shows B♭, not A♯), with ♯/♭ symbols and scale degrees.
@@ -30,7 +31,7 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 - **Smart pitch clamping** — voicings are moved down whole octaves until they sit at or below C7, so high inversions of extended chords don't get shrill.
 - **Made for phones too** — tapping a chord opens one sheet above the piano with **Voicings** and **About** tabs (a side panel in landscape), instead of popups. The header fits in two rows, buttons are finger-sized, piano keys get wider and scroll to whatever plays, and the layout keeps clear of the iPhone notch and home indicator.
 - **7 languages** — English, Español, Français, Deutsch, Italiano, Português and Català, switchable from the 🌐 picker in the header. Everything is translated: controls, chord names, the chord info panel (interval names, recipes, descriptions, keys and scales) and the screen-reader labels (German even reads the root keys as Cis, Es, B and H). The first visit follows your browser's language. Note names stay as letters (C D E…), as in international chord symbols.
-- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab, details on/off, language, key) between visits.
+- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab, details on/off, language, key, My chords) between visits.
 - **Dark mode** that follows your system setting.
 - **Loading progress** for the piano samples, with a clear message if they can't be loaded.
 
@@ -75,10 +76,11 @@ Then open `http://localhost:8080/` in your browser.
 3. Click a chord to hear it. Its voicings open in a popup next to it; click one to hear that voicing. The chord info panel explains whatever is playing.
    On phones and tablets, the voicings and the chord info share a sheet above the piano: switch between them with the **Voicings** / **About** tabs; the ⓘ **Details** button turns the sheet on or off.
 4. To stay in one key, choose it with **Key** above the chords and its mode next to it (major, Dorian, Mixolydian…). Its main chords are at the top; pick a root to jump to the chords on that degree. Choose **Any** to see every chord on the root again.
-5. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again: it then stays closed for the next chords, until you press **Details** in the bottom bar. (On wide screens, clicking elsewhere also closes the popup, just for that chord.) Clicking another chord while it's open switches straight to it.
-6. Pick the interface language with the 🌐 button next to the octave selector.
-7. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
-8. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
+5. Hold a chord to add it to **My chords** at the top (hold it there to remove it), then tap them to build a progression, or press **▶ Play in order**.
+6. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again: it then stays closed for the next chords, until you press **Details** in the bottom bar. (On wide screens, clicking elsewhere also closes the popup, just for that chord.) Clicking another chord while it's open switches straight to it.
+7. Pick the interface language with the 🌐 button next to the octave selector.
+8. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
+9. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
 
 ## Project Structure
 

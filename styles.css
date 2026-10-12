@@ -458,6 +458,73 @@ select, .chord-filter {
     color: var(--primary-strong);
 }
 
+/* Holding a chord picks it: no text selection or callout menu getting in the way */
+.chord-button {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* My chords: picked by holding a chord, played in order as a progression */
+.picked-chords {
+    margin-bottom: 4px;
+    padding: 8px;
+    border: 1px dashed var(--root-border);
+    border-radius: 6px;
+    background: var(--root-soft);
+}
+
+.picked-chords .chord-group-title {
+    color: var(--root);
+}
+
+.picks-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+.picks-header .chord-group-title {
+    margin: 0;
+}
+
+.picks-play {
+    min-height: 30px;
+    padding: 3px 10px;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--root);
+    background: var(--surface);
+    border: 1px solid var(--root-border);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.picks-play[aria-pressed="true"] {
+    color: var(--surface);
+    background: var(--root);
+}
+
+.picks-hint {
+    margin: 0;
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+.chord-button.progression-current {
+    border-color: var(--root);
+    box-shadow: 0 0 0 2px var(--root);
+}
+
+/* A chord that's in My chords */
+.chord-button.picked .chord-symbol::after {
+    content: " ★";
+    color: var(--root);
+    font-size: 0.85em;
+}
+
 /* A key's triads and sevenths, one column per degree */
 .main-chords .chord-grid {
     grid-template-columns: repeat(7, minmax(0, 1fr));

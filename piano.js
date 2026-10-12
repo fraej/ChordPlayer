@@ -36,8 +36,12 @@
                 (Math.abs(sample.midi - midi) < Math.abs(best.midi - midi) ? sample : best));
         }
 
-        /** Start notes ("C4", "A#3"…, or an array of them) at `time` (default: now). */
-        triggerAttack(notes, time = Tone.immediate(), velocity = 1) {
+        /**
+         * Start notes ("C4", "A#3"…, or an array of them) at `time` (default: now). With a
+         * `duration`, they're also released that many seconds later (a release that a
+         * later releaseAll() can still bring forward or cancel).
+         */
+        triggerAttack(notes, time = Tone.immediate(), velocity = 1, duration = undefined) {
             for (const note of [].concat(notes)) {
                 const midi = Tone.Frequency(note).toMidi();
                 const sample = this.nearestSample(midi);
@@ -53,6 +57,7 @@
                     gain.dispose();
                 };
                 source.start(time);
+                if (duration !== undefined) this.fadeOut(voice, time + duration, this.release);
                 this.voices.add(voice);
             }
             return this;
@@ -86,9 +91,12 @@
                 voice.source.stop(time);
                 return;
             }
-            const gain = voice.gain.gain;
-            gain.cancelAndHoldAtTime(time);
-            gain.setTargetAtTime(0, time, fade / 6);   // ~-50 dB after `fade` seconds
+            voice.gain.gain.cancelAndHoldAtTime(time);
+            this.fadeOut(voice, time, fade);
+        }
+
+        fadeOut(voice, time, fade) {
+            voice.gain.gain.setTargetAtTime(0, time, fade / 6);   // ~-50 dB after `fade` seconds
             voice.source.stop(time + fade);
         }
 

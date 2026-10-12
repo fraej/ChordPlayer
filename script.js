@@ -26,6 +26,10 @@
     // further than TOUCH_SLOP_PX first (it's scrolling), which cancels the sound
     const TOUCH_HOLD_MS = 30;
     const TOUCH_SLOP_PX = 10;
+    // Holding a chord this long adds it to (or removes it from) My chords
+    const LONG_PRESS_MS = 500;
+    // Seconds per chord when My chords plays as a progression
+    const PROGRESSION_STEP_S = 1.2;
     const SETTINGS_KEY = 'chordPlayer.settings';
 
     // Interface text in the current language (see i18n.js)
@@ -40,7 +44,8 @@
         showDetails: true,      // open the voicings popup / sheet when a chord is clicked
         language: null,         // interface language picked by the user, or null to follow the browser
         keyTonic: null,         // pitch class of the chosen key's tonic, or null to show every chord on the root
-        keyScale: 'major',      // a ChordTheory.KEY_SCALE_IDS id: 'major', 'dorian' … 'minor', 'locrian', 'harmonic', 'melodic'
+        keyScale: 'major',
+        picks: [],              // My chords, in the order they were added: [{ id, tonic }]      // a ChordTheory.KEY_SCALE_IDS id: 'major', 'dorian' … 'minor', 'locrian', 'harmonic', 'melodic'
         lastPlayed: null        // { chord, voicing }, for replay and the info panel
     };
 
@@ -61,6 +66,8 @@
     let piano;
     let view = null;            // chord whose voicings are listed: { button, chord, voicings, container }
     let statusTimer;
+    let progression = null;     // My chords playing in order: { timers }
+    let keyDegrees = null;      // the chosen key's degrees (ChordTheory.keyChords), for numerals
     let statusMessage = null;   // { key, vars } of the status shown, so it can be retranslated
 
     // ---------------------------------------------------------------------
@@ -166,9 +173,12 @@
             closeChordView();
             applyFilter();
         });
-        const chordActions = { resolve: resolveChordButton, activate: activateChord };
+        const chordActions = { resolve: resolveChordButton, activate: activateChord, hold: togglePick };
         const voicingActions = { resolve: resolveVoicingButton, activate: activateVoicing };
         onPress(ui.chordGroups, '.chord-button', chordActions);
+        ui.chordGroups.addEventListener('click', event => {
+            if (event.target.closest('.picks-play')) toggleProgression();
+        });
         onPress(ui.popupBody, '.voicing-button', voicingActions);
         onPress(ui.sheetVoicings, '.voicing-button', voicingActions);
         ui.popupClose.addEventListener('click', hideDetails);
@@ -222,19 +232,40 @@
      *    happens. (The audio clock is used because browsers hold back page timers while
      *    a finger is down, to see whether it's going to scroll.)
      *  - keyboard (Enter/Space): a click with detail 0, as before.
+     *
+     * With `hold(button)`, holding a button for LONG_PRESS_MS (finger or mouse), a right
+     * click or the context-menu key calls it instead of completing the tap.
      */
-    function onPress(element, selector, { resolve, activate }) {
+    function onPress(element, selector, { resolve, activate, hold = null }) {
         let mouseHandled = false;
         let touch = null;   // { pointerId, button, x, y, sounded }
+        let press = null;   // pending or completed long press: { pointerId, button, x, y, timer, done, releasedAt }
 
         const dropTouch = ({ cut }) => {
             if (touch && cut && touch.sounded) cutSound();
             touch = null;
         };
+        const fireHold = () => {
+            clearTimeout(press.timer);
+            press.done = true;
+            hold(press.button);
+        };
+        const cancelHold = () => {
+            if (press && !press.done) {
+                clearTimeout(press.timer);
+                press = null;
+            }
+        };
 
         element.addEventListener('pointerdown', event => {
             const button = event.target.closest(selector);
+            if (press) clearTimeout(press.timer);
+            press = null; // a new press: whatever the last one was is over
             if (!button || !element.contains(button)) return;
+            if (hold && (event.pointerType === 'touch' || event.button === 0)) {
+                press = { pointerId: event.pointerId, button, x: event.clientX, y: event.clientY, done: false };
+                press.timer = setTimeout(fireHold, LONG_PRESS_MS);
+            }
             if (event.pointerType === 'touch') {
                 const target = resolve(button);
                 touch = { pointerId: event.pointerId, button, x: event.clientX, y: event.clientY, sounded: false };
@@ -251,12 +282,47 @@
                 && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > TOUCH_SLOP_PX) {
                 dropTouch({ cut: true });
             }
+            if (press && event.pointerId === press.pointerId
+                && Math.hypot(event.clientX - press.x, event.clientY - press.y) > TOUCH_SLOP_PX) {
+                cancelHold();
+            }
         }, { passive: true });
         element.addEventListener('pointercancel', event => {
             if (touch && event.pointerId === touch.pointerId) dropTouch({ cut: true });
+            if (press && event.pointerId === press.pointerId) cancelHold();
+        });
+        window.addEventListener('pointerup', event => {
+            if (!press || event.pointerId !== press.pointerId) return;
+            if (press.done) press.releasedAt = performance.now(); else cancelHold();
+        });
+        // The click that ends a long press is swallowed; it arrives right after the
+        // release, or not at all if the button was redrawn meanwhile
+        const endsLongPress = () => press && press.done
+            && (press.releasedAt === undefined || performance.now() - press.releasedAt < 500);
+
+        // Right click, the context-menu key, and the browser's own long-press menu on
+        // phones: never show a menu over the buttons; count it as the long press
+        element.addEventListener('contextmenu', event => {
+            const button = event.target.closest(selector);
+            if (!hold || !button || !element.contains(button)) return;
+            event.preventDefault();
+            if (endsLongPress() && press.button === button) return;   // this hold already fired
+            if (press && press.button === button) {
+                fireHold();                               // the browser noticed the hold first
+            } else {
+                press = { button, done: true, releasedAt: performance.now() };
+                hold(button);
+            }
         });
 
         element.addEventListener('click', event => {
+            if (endsLongPress()) {
+                press = null; // the press was a long press: the tap doesn't count
+                dropTouch({ cut: false });
+                mouseHandled = false;
+                return;
+            }
+            press = null;
             if (mouseHandled && event.detail > 0) {
                 mouseHandled = false; // already handled when the mouse button went down
                 return;
@@ -471,13 +537,17 @@
         if (Number.isInteger(saved.keyTonic) && saved.keyTonic >= 0 && saved.keyTonic < 12) {
             state.keyTonic = saved.keyTonic;
         }
+        if (Array.isArray(saved.picks)) {
+            state.picks = saved.picks.filter(pick => pick && typeof pick.id === 'string'
+                && typeof pick.tonic === 'string' && /^[A-G](#{1,2}|b{1,2})?$/.test(pick.tonic));
+        }
     }
 
     function saveSettings() {
-        const { rootPc, accidentals, octave, playStyle, sheetTab, showDetails, language, keyTonic, keyScale } = state;
+        const { rootPc, accidentals, octave, playStyle, sheetTab, showDetails, language, keyTonic, keyScale, picks } = state;
         try {
             localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-                rootPc, accidentals, octave, playStyle, sheetTab, showDetails, language, keyTonic, keyScale
+                rootPc, accidentals, octave, playStyle, sheetTab, showDetails, language, keyTonic, keyScale, picks
             }));
         } catch (error) {
             // Storage unavailable (e.g. private browsing): settings just won't persist
@@ -507,12 +577,14 @@
             el('div', 'chord-grid', buttons));
 
         let sections;
+        keyDegrees = null;
         if (state.keyTonic === null) {
             const tonic = rootName();
             sections = catalogue.map(chordGroup => group(ChordTheory.groupTitle(chordGroup),
                 chordGroup.chords.map(entry => createChordButton(entry, tonic))));
         } else {
             const degrees = ChordTheory.keyChords(catalogueEntries(), state.keyTonic, state.keyScale, state.accidentals);
+            keyDegrees = degrees;
             // First the chords everyone plays in the key: its triads, then its seventh chords
             const main = ['triad', 'seventh'].flatMap(shape => degrees.filter(degree => degree[shape])
                 .map(degree => createChordButton(degree[shape].entry, degree.root, degree[shape].numeral)));
@@ -527,10 +599,138 @@
                 }));
         }
         ui.chordGroups.replaceChildren(...sections);
-        applyFilter();
+        renderPicks();
     }
 
     const catalogueEntries = () => catalogue.flatMap(chordGroup => chordGroup.chords);
+
+    // ---------------------------------------------------------------------
+    // My chords: picked by holding a chord, played in order as a progression
+    // ---------------------------------------------------------------------
+
+    const samePick = (a, b) => a.id === b.id && pitchClassOf(a.tonic) === pitchClassOf(b.tonic);
+    const isPicked = button => state.picks.some(pick => samePick(pick, { id: button.dataset.id, tonic: button.dataset.tonic }));
+
+    /** Hold on a chord: add it to My chords, or remove it if it's there already. */
+    function togglePick(button) {
+        const pick = { id: button.dataset.id, tonic: button.dataset.tonic };
+        const entry = chordsById.get(pick.id);
+        if (!entry) return;
+        const index = state.picks.findIndex(existing => samePick(existing, pick));
+        if (index >= 0) {
+            state.picks.splice(index, 1);
+        } else {
+            state.picks.push(pick);
+        }
+        stopProgression();
+        saveSettings();
+        renderPicks();
+        showStatus(index >= 0 ? 'picks.removed' : 'picks.added', 'success', 1800,
+            { chord: ChordTheory.chordSymbol(pick.tonic, entry) });
+        try {
+            if (navigator.vibrate) navigator.vibrate(15);
+        } catch (error) {
+            // no vibration: the status message is enough
+        }
+    }
+
+    /** Numerals of the chosen key's chords: "id|pitch class" -> "V7". */
+    function keyNumerals() {
+        const numerals = new Map();
+        (keyDegrees || []).forEach(degree => degree.chords.forEach(({ entry, numeral }) => {
+            numerals.set(`${entry.id}|${pitchClassOf(degree.root)}`, numeral);
+        }));
+        return numerals;
+    }
+
+    function picksSection() {
+        const numerals = keyNumerals();
+        const picks = state.picks.filter(pick => chordsById.has(pick.id));
+        const playing = Boolean(progression);
+        const playButton = el('button', 'picks-play',
+            el('span', null, playing ? '■' : '▶'), ' ', t(playing ? 'picks.stop' : 'picks.play'));
+        playButton.type = 'button';
+        playButton.setAttribute('aria-pressed', String(playing));
+        playButton.hidden = picks.length === 0;
+
+        const section = el('section', 'chord-group picked-chords',
+            el('div', 'picks-header', el('h3', 'chord-group-title', t('picks.title')), playButton),
+            picks.length > 0
+                ? el('div', 'chord-grid', picks.map(pick => createChordButton(chordsById.get(pick.id), pick.tonic,
+                    numerals.get(`${pick.id}|${pitchClassOf(pick.tonic)}`) || null)))
+                : el('p', 'picks-hint', t('picks.hint')));
+        return section;
+    }
+
+    /** Redraw My chords and the ★ marks, leaving the rest of the list (and an open popup) alone. */
+    function renderPicks() {
+        const old = ui.chordGroups.querySelector('.picked-chords');
+        if (view && view.button && old && old.contains(view.button)) closeChordView();
+        const section = picksSection();
+        if (old) old.replaceWith(section); else ui.chordGroups.prepend(section);
+        ui.chordGroups.querySelectorAll('.chord-group:not(.picked-chords) .chord-button').forEach(button => {
+            button.classList.toggle('picked', isPicked(button));
+        });
+        applyFilter();
+    }
+
+    function resolvePick(pick) {
+        const entry = chordsById.get(pick.id);
+        const pitchClasses = entry ? ChordTheory.chordNotes(entry.id, pick.tonic) : [];
+        if (pitchClasses.length === 0) return null;
+        return {
+            chord: { entry, tonic: pick.tonic, pitchClasses },
+            voicing: { notes: ChordTheory.closeVoicing(pitchClasses, 0, state.octave), type: 'close', inversion: 0 }
+        };
+    }
+
+    function toggleProgression() {
+        if (progression) {
+            stopProgression({ silence: true });
+        } else {
+            playProgression();
+        }
+    }
+
+    /**
+     * Play My chords in order, PROGRESSION_STEP_S each, block or arpeggio. The notes are
+     * all scheduled on the audio clock up front; timers only follow along on screen.
+     */
+    function playProgression() {
+        const items = state.picks.map(resolvePick).filter(Boolean);
+        if (items.length === 0 || !prepareAudio()) return;
+        const lead = 0.05;
+        const start = Tone.immediate() + lead;
+        audio.sampler.releaseAll(Tone.immediate());
+        items.forEach((item, i) => {
+            const names = item.voicing.notes.map(note => ChordTheory.midiToNoteName(ChordTheory.midi(note)));
+            const at = start + i * PROGRESSION_STEP_S;
+            const end = at + PROGRESSION_STEP_S * (i === items.length - 1 ? 2 : 1);
+            const offsets = names.map((name, n) => (state.playStyle === 'arpeggio' ? (n * ARPEGGIO_STEP_MS) / 1000 : 0));
+            names.forEach((name, n) => audio.sampler.triggerAttack(name, at + offsets[n], 1, end - (at + offsets[n])));
+        });
+
+        const timers = items.map((item, i) => setTimeout(() => showProgressionStep(item, i),
+            (lead + i * PROGRESSION_STEP_S) * 1000));
+        timers.push(setTimeout(() => stopProgression(), (lead + items.length * PROGRESSION_STEP_S) * 1000));
+        progression = { timers };
+        renderPicks();
+    }
+
+    function showProgressionStep(item, index) {
+        play(item.chord, item.voicing, { sounded: true });
+        const buttons = ui.chordGroups.querySelectorAll('.picked-chords .chord-button');
+        buttons.forEach((button, i) => button.classList.toggle('progression-current', i === index));
+    }
+
+    /** Stop following a progression on screen; with `silence`, also stop its sound. */
+    function stopProgression({ silence = false } = {}) {
+        if (!progression) return;
+        progression.timers.forEach(clearTimeout);
+        progression = null;
+        if (silence && audio.ready) audio.sampler.releaseAll(Tone.immediate(), 0.15);
+        renderPicks();
+    }
 
     /** A chord button; `numeral` (e.g. "V7") is its function in the chosen key, if any. */
     function createChordButton(entry, tonic, numeral = null) {
@@ -566,7 +766,8 @@
                 button.hidden = !visible;
                 if (visible) shown++;
             });
-            section.hidden = shown === 0;
+            // My chords stays visible (with its hint) unless a filter leaves nothing in it
+            section.hidden = shown === 0 && !(section.classList.contains('picked-chords') && !query.trim());
             total += shown;
         });
         ui.noMatches.hidden = total > 0;
@@ -922,6 +1123,7 @@
      */
     function sound(notes, { delay = 0 } = {}) {
         if (!prepareAudio()) return false;
+        stopProgression(); // a chord played by hand takes over (its releaseAll cancels the rest)
 
         // The sampler gets sharp-spelled names; it doesn't need the chord spelling
         const names = notes.map(note => ChordTheory.midiToNoteName(ChordTheory.midi(note)));
