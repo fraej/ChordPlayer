@@ -173,8 +173,16 @@
             closeChordView();
             applyFilter();
         });
-        const chordActions = { resolve: resolveChordButton, activate: activateChord, hold: togglePick };
-        const voicingActions = { resolve: resolveVoicingButton, activate: activateVoicing };
+        const chordActions = {
+            resolve: resolveChordButton,
+            activate: activateChord,
+            hold: button => togglePick(pickFromChordButton(button))
+        };
+        const voicingActions = {
+            resolve: resolveVoicingButton,
+            activate: activateVoicing,
+            hold: button => togglePick(pickFromVoicingButton(button))
+        };
         onPress(ui.chordGroups, '.chord-button', chordActions);
         ui.chordGroups.addEventListener('click', event => {
             if (event.target.closest('.picks-play')) toggleProgression();
@@ -538,8 +546,12 @@
             state.keyTonic = saved.keyTonic;
         }
         if (Array.isArray(saved.picks)) {
+            const voicingOk = voicing => voicing === undefined || (voicing && Array.isArray(voicing.notes)
+                && voicing.notes.length > 0 && voicing.notes.every(note => /^[A-G](#{1,2}|b{1,2})?\d$/.test(note))
+                && (voicing.type === 'close' || voicing.type === 'open') && Number.isInteger(voicing.inversion));
             state.picks = saved.picks.filter(pick => pick && typeof pick.id === 'string'
-                && typeof pick.tonic === 'string' && /^[A-G](#{1,2}|b{1,2})?$/.test(pick.tonic));
+                && typeof pick.tonic === 'string' && /^[A-G](#{1,2}|b{1,2})?$/.test(pick.tonic)
+                && voicingOk(pick.voicing));
         }
     }
 
@@ -608,12 +620,43 @@
     // My chords: picked by holding a chord, played in order as a progression
     // ---------------------------------------------------------------------
 
-    const samePick = (a, b) => a.id === b.id && pitchClassOf(a.tonic) === pitchClassOf(b.tonic);
-    const isPicked = button => state.picks.some(pick => samePick(pick, { id: button.dataset.id, tonic: button.dataset.tonic }));
+    // A pick is { id, tonic } for a chord (played in close root position at the current
+    // octave), or { id, tonic, voicing: { notes, type, inversion } } for one exact voicing
+    const voicingKey = voicing => (voicing ? voicing.notes.map(ChordTheory.midi).join(',') : '');
+    const samePick = (a, b) => a.id === b.id && pitchClassOf(a.tonic) === pitchClassOf(b.tonic)
+        && voicingKey(a.voicing) === voicingKey(b.voicing);
+    const isPicked = pick => state.picks.some(existing => samePick(existing, pick));
 
-    /** Hold on a chord: add it to My chords, or remove it if it's there already. */
-    function togglePick(button) {
+    function pickFromChordButton(button) {
         const pick = { id: button.dataset.id, tonic: button.dataset.tonic };
+        if (button.dataset.notes) {
+            pick.voicing = {
+                notes: button.dataset.notes.split(','),
+                type: button.dataset.type,
+                inversion: Number(button.dataset.inversion)
+            };
+        }
+        return pick;
+    }
+
+    function pickFromVoicingButton(button) {
+        const target = resolveVoicingButton(button);
+        if (!target) return null;
+        const { notes, type, inversion } = target.voicing;
+        return { id: target.chord.entry.id, tonic: target.chord.tonic, voicing: { notes, type, inversion } };
+    }
+
+    /** "C7", or for a picked voicing its slash chord when inverted: "C7/E". */
+    function pickSymbol(pick) {
+        const symbol = ChordTheory.chordSymbol(pick.tonic, chordsById.get(pick.id));
+        return pick.voicing && pick.voicing.inversion > 0
+            ? `${symbol}/${ChordTheory.noteParts(pick.voicing.notes[0]).name}`
+            : symbol;
+    }
+
+    /** Hold on a chord or a voicing: add it to My chords, or remove it if it's there already. */
+    function togglePick(pick) {
+        if (!pick) return;
         const entry = chordsById.get(pick.id);
         if (!entry) return;
         const index = state.picks.findIndex(existing => samePick(existing, pick));
@@ -625,8 +668,8 @@
         stopProgression();
         saveSettings();
         renderPicks();
-        showStatus(index >= 0 ? 'picks.removed' : 'picks.added', 'success', 1800,
-            { chord: ChordTheory.chordSymbol(pick.tonic, entry) });
+        const label = pick.voicing ? `${pickSymbol(pick)} (${voicingLabel(pick.voicing)})` : pickSymbol(pick);
+        showStatus(index >= 0 ? 'picks.removed' : 'picks.added', 'success', 1800, { chord: label });
         try {
             if (navigator.vibrate) navigator.vibrate(15);
         } catch (error) {
@@ -657,7 +700,7 @@
             el('div', 'picks-header', el('h3', 'chord-group-title', t('picks.title')), playButton),
             picks.length > 0
                 ? el('div', 'chord-grid', picks.map(pick => createChordButton(chordsById.get(pick.id), pick.tonic,
-                    numerals.get(`${pick.id}|${pitchClassOf(pick.tonic)}`) || null)))
+                    numerals.get(`${pick.id}|${pitchClassOf(pick.tonic)}`) || null, pick.voicing)))
                 : el('p', 'picks-hint', t('picks.hint')));
         return section;
     }
@@ -669,9 +712,18 @@
         const section = picksSection();
         if (old) old.replaceWith(section); else ui.chordGroups.prepend(section);
         ui.chordGroups.querySelectorAll('.chord-group:not(.picked-chords) .chord-button').forEach(button => {
-            button.classList.toggle('picked', isPicked(button));
+            button.classList.toggle('picked', isPicked(pickFromChordButton(button)));
         });
+        markPickedVoicings();
         applyFilter();
+    }
+
+    // ★ on the voicings in the popup or sheet that are in My chords
+    function markPickedVoicings() {
+        if (!view) return;
+        view.container.querySelectorAll('.voicing-button').forEach(button => {
+            button.classList.toggle('picked', isPicked(pickFromVoicingButton(button)));
+        });
     }
 
     function resolvePick(pick) {
@@ -680,7 +732,9 @@
         if (pitchClasses.length === 0) return null;
         return {
             chord: { entry, tonic: pick.tonic, pitchClasses },
-            voicing: { notes: ChordTheory.closeVoicing(pitchClasses, 0, state.octave), type: 'close', inversion: 0 }
+            voicing: pick.voicing
+                ? { ...pick.voicing, notes: [...pick.voicing.notes] }
+                : { notes: ChordTheory.closeVoicing(pitchClasses, 0, state.octave), type: 'close', inversion: 0 }
         };
     }
 
@@ -733,11 +787,12 @@
     }
 
     /** A chord button; `numeral` (e.g. "V7") is its function in the chosen key, if any. */
-    function createChordButton(entry, tonic, numeral = null) {
-        const symbol = ChordTheory.chordSymbol(tonic, entry);
-        const notes = ChordTheory.chordNotes(entry.id, tonic).map(ChordTheory.formatNote);
+    function createChordButton(entry, tonic, numeral = null, voicing = null) {
+        const symbol = voicing ? pickSymbol({ id: entry.id, tonic, voicing }) : ChordTheory.chordSymbol(tonic, entry);
+        const notes = voicing ? voicing.notes.map(ChordTheory.formatNote) : ChordTheory.chordNotes(entry.id, tonic).map(ChordTheory.formatNote);
         const name = ChordTheory.chordName(entry);
-        const subtitle = name || entry.degrees.join(' ');
+        // A picked voicing shows its notes instead of the chord's name
+        const subtitle = voicing ? notes.join(' ') : name || entry.degrees.join(' ');
         const count = el('span', 'note-count', String(entry.size));
         count.setAttribute('aria-hidden', 'true');
 
@@ -750,9 +805,16 @@
         button.type = 'button';
         button.dataset.id = entry.id;
         button.dataset.tonic = tonic;
+        if (voicing) {
+            button.dataset.notes = voicing.notes.join(',');
+            button.dataset.type = voicing.type;
+            button.dataset.inversion = String(voicing.inversion);
+            button.classList.add('voicing-pick');
+        }
         button.setAttribute('aria-haspopup', 'dialog');
         button.setAttribute('aria-expanded', 'false');
-        button.title = `${numeral ? `${numeral} · ` : ''}${symbol}${name ? ` (${name})` : ''}: ${notes.join(' ')} · ${entry.degrees.join(' ')}`;
+        button.title = `${numeral ? `${numeral} · ` : ''}${symbol}${name ? ` (${name})` : ''}: ${notes.join(' ')}`
+            + (voicing ? ` · ${voicingLabel(voicing)}` : ` · ${entry.degrees.join(' ')}`);
         return button;
     }
 
@@ -774,16 +836,9 @@
         ui.noMatches.textContent = total > 0 ? '' : t('noMatches', { query: query.trim() });
     }
 
-    /** What a chord button plays: its close root-position voicing. */
+    /** What a chord button plays: its close root-position voicing, or the voicing picked into My chords. */
     function resolveChordButton(button) {
-        const entry = chordsById.get(button.dataset.id);
-        const tonic = button.dataset.tonic;
-        const pitchClasses = ChordTheory.chordNotes(entry.id, tonic);
-        if (pitchClasses.length === 0) return null;
-        return {
-            chord: { entry, tonic, pitchClasses },
-            voicing: { notes: ChordTheory.closeVoicing(pitchClasses, 0, state.octave), type: 'close', inversion: 0 }
-        };
+        return resolvePick(pickFromChordButton(button));
     }
 
     function activateChord(button, event, sounded) {
@@ -796,7 +851,7 @@
             hideDetails(); // a second click on the same chord hides the details
         } else if (state.showDetails) {
             // Keyboard activation moves focus into the popup or sheet
-            openChordView(button, chord, { focus: fromKeyboard(event) });
+            openChordView(button, chord, { focus: fromKeyboard(event), octave: listOctave(chord, voicing) });
         } else {
             closeChordView(); // details are off: just play (and drop any stale view)
         }
@@ -816,13 +871,26 @@
      * the sheet on compact ones. `button` may be null when the sheet is reopened
      * for a chord that's no longer on screen.
      */
-    function openChordView(button, chord, { focus = false } = {}) {
+    /**
+     * The octave to list a chord's voicings in: the current one, unless the voicing that's
+     * playing (a voicing picked into My chords) comes from another octave's list.
+     */
+    function listOctave(chord, voicing) {
+        const key = voicing.notes.join();
+        const bassOctave = ChordTheory.noteParts(voicing.notes[0]).octave;
+        const inList = octave => ChordTheory.voicingGroups(chord.pitchClasses, octave)
+            .some(group => group.voicings.some(candidate => candidate.notes.join() === key));
+        return [state.octave, bassOctave, bassOctave + 1].find(inList) ?? state.octave;
+    }
+
+    function openChordView(button, chord, { focus = false, octave = state.octave } = {}) {
         closeChordView();
         const compact = isCompact();
         const container = compact ? ui.sheetVoicings : ui.popupBody;
         const playing = state.lastPlayed && state.lastPlayed.chord === chord ? state.lastPlayed.voicing : null;
-        const voicings = renderVoicingList(container, chord, playing);
+        const voicings = renderVoicingList(container, chord, playing, octave);
         view = { button, chord, voicings, container };
+        markPickedVoicings();
 
         if (button) {
             button.classList.add('chord-active');
@@ -864,9 +932,9 @@
         }
     }
 
-    function renderVoicingList(container, chord, playing) {
+    function renderVoicingList(container, chord, playing, octave = state.octave) {
         const voicings = [];
-        const sections = ChordTheory.voicingGroups(chord.pitchClasses, state.octave).map(group => el('div', 'inversion-group',
+        const sections = ChordTheory.voicingGroups(chord.pitchClasses, octave).map(group => el('div', 'inversion-group',
             el('div', 'inversion-title', voicingLabel(group)),
             el('div', 'voicing-grid', group.voicings.map(voicing => {
                 const index = voicings.push({ notes: voicing.notes, type: group.type, inversion: group.inversion }) - 1;
@@ -983,7 +1051,7 @@
             const button = ui.chordGroups.querySelector(
                 `.chord-button[data-id="${CSS.escape(chord.entry.id)}"][data-tonic="${CSS.escape(chord.tonic)}"]`);
             // The popup needs its chord button to sit next to; the sheet doesn't
-            if (button || isCompact()) openChordView(button, chord);
+            if (button || isCompact()) openChordView(button, chord, { octave: listOctave(chord, state.lastPlayed.voicing) });
         }
     }
 

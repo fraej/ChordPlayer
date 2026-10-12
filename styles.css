@@ -518,6 +518,12 @@ select, .chord-filter {
     box-shadow: 0 0 0 2px var(--root);
 }
 
+/* A voicing that's in My chords */
+.voicing-button.picked::after {
+    content: " ★";
+    color: var(--root);
+}
+
 /* A chord that's in My chords */
 .chord-button.picked .chord-symbol::after {
     content: " ★";
