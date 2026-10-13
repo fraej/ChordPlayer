@@ -24,8 +24,7 @@
                 'D#3', 'F#3', 'A3', 'C4', 'D#4', 'F#4', 'A4', 'C5', 'D#5', 'F#5',
                 'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7', 'D#7', 'F#7', 'A7', 'C8'
             ],
-            // Ogg where the browser supports it, MP3 otherwise (Safari), as Tone.js decides
-            file: note => `${note.replace('#', 's')}.${Tone.ToneAudioBuffer.supportsType('ogg') ? 'ogg' : 'mp3'}`,
+            formats: ['ogg', 'mp3'],    // the first one the browser can play (Safari: MP3)
             release: 1,
             volume: 1
         },
@@ -34,7 +33,7 @@
         guitar: {
             baseUrl: 'https://cdn.jsdelivr.net/npm/tonejs-instrument-guitar-acoustic-mp3@1.1.2/',
             notes: ['D2', 'F2', 'G#2', 'B2', 'D3', 'F3', 'G#3', 'B3', 'D4', 'F4', 'G#4', 'B4', 'D5'],
-            file: note => `${note.replace('#', 's')}.mp3`,
+            formats: ['mp3'],
             release: 0.4,       // a new chord damps the strings that were still ringing
             volume: 0.45        // every sample peaks at -3 dBFS: leave headroom for big chords
         }
@@ -53,9 +52,13 @@
     // Seconds per chord when My chords plays as a progression
     const PROGRESSION_STEP_S = 1.2;
     const SETTINGS_KEY = 'chordPlayer.settings';
+    // Playing an instrument whose samples failed to load tries again, at most this often
+    const RETRY_AFTER_MS = 5000;
 
     // Interface text in the current language (see i18n.js)
     const t = (key, vars) => (window.I18n ? I18n.t(key, vars) : key);
+    // `key in object` also accepts inherited names like "toString" (e.g. from corrupt storage)
+    const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
     const state = {
         rootPc: 0,              // selected root as a pitch class (0 = C)
@@ -75,7 +78,7 @@
     const audio = {
         unavailable: false,     // Tone.js didn't load: no sound at all
         instruments: {},        // per instrument, once it starts loading: { player, loaded, ready, failed, loading }
-        lastStrum: null         // { time, down } of the last strum, so quick strums alternate
+        lastStrum: null         // { time, direction } of the last strum, so quick strums alternate
     };
 
     // Below this width the sheet replaces the voicing popup and the info sidebar
@@ -432,7 +435,7 @@
     }
 
     function setLanguage(code) {
-        state.language = code in I18n.LANGUAGES ? code : null;
+        state.language = hasOwn(I18n.LANGUAGES, code) ? code : null;
         saveSettings();
         translateStaticText();
         if (!catalogue) return; // the theory library didn't load: only the fixed text changes
@@ -525,15 +528,29 @@
 
     /** Switch to another instrument, loading its samples the first time. */
     function setInstrument(name) {
-        if (!(name in INSTRUMENTS) || name === state.instrument) return;
+        if (!hasOwn(INSTRUMENTS, name) || name === state.instrument) return;
         stopProgression();
         const previous = currentPlayer();
-        if (previous && window.Tone) previous.releaseAll(Tone.immediate(), 0.3);
+        if (previous) previous.releaseAll(Tone.immediate(), 0.3);
         state.instrument = name;
         audio.lastStrum = null;
         saveSettings();
-        syncControls();
-        if (window.Tone) loadInstrument(name);
+        syncInstrument();
+        if (!audio.unavailable) showInstrumentStatus();
+    }
+
+    /**
+     * Say where the current instrument stands, replacing whatever the status said about
+     * the other one: ready, or loading (starting it, or retrying after a failure).
+     */
+    function showInstrumentStatus() {
+        const entry = audio.instruments[state.instrument];
+        if (entry && entry.ready) {
+            showStatus(`status.ready.${state.instrument}`, 'success', 1500);
+        } else {
+            loadInstrument(state.instrument);
+            showLoadingStatus();
+        }
     }
 
     function renderInstrumentOptions() {
@@ -585,10 +602,10 @@
         if ([...ui.octave.options].some(option => Number(option.value) === saved.octave)) {
             state.octave = saved.octave;
         }
-        if (['block', 'arpeggio', 'strum'].includes(saved.playStyle)) {
+        if (ui.playStyleButtons.some(button => button.dataset.playStyle === saved.playStyle)) {
             state.playStyle = saved.playStyle;
         }
-        if (saved.instrument in INSTRUMENTS) {
+        if (hasOwn(INSTRUMENTS, saved.instrument)) {
             state.instrument = saved.instrument;
         }
         if (saved.sheetTab === 'voicings' || saved.sheetTab === 'about') {
@@ -597,7 +614,7 @@
         if (typeof saved.showDetails === 'boolean') {
             state.showDetails = saved.showDetails;
         }
-        if (window.I18n && saved.language in I18n.LANGUAGES) {
+        if (window.I18n && hasOwn(I18n.LANGUAGES, saved.language)) {
             state.language = saved.language;
         }
         if (window.ChordTheory && ChordTheory.KEY_SCALE_IDS.includes(saved.keyScale)) {
@@ -728,7 +745,7 @@
         } else {
             state.picks.push(pick);
         }
-        stopProgression();
+        stopProgression({ silence: true }); // its chords were scheduled from the old list
         saveSettings();
         renderPicks();
         const label = pick.voicing ? `${pickSymbol(pick)} (${voicingLabel(pick.voicing)})` : pickSymbol(pick);
@@ -752,11 +769,8 @@
     function picksSection() {
         const numerals = keyNumerals();
         const picks = state.picks.filter(pick => chordsById.has(pick.id));
-        const playing = Boolean(progression);
-        const playButton = el('button', 'picks-play',
-            el('span', null, playing ? '■' : '▶'), ' ', t(playing ? 'picks.stop' : 'picks.play'));
+        const playButton = el('button', 'picks-play'); // labelled by syncProgressionControls
         playButton.type = 'button';
-        playButton.setAttribute('aria-pressed', String(playing));
         playButton.hidden = picks.length === 0;
 
         const section = el('section', 'chord-group picked-chords',
@@ -778,7 +792,24 @@
             button.classList.toggle('picked', isPicked(pickFromChordButton(button)));
         });
         markPickedVoicings();
+        syncProgressionControls();
         applyFilter();
+    }
+
+    /**
+     * Show whether My chords is playing (▶ Play in order / ■ Stop) without redrawing the
+     * chords, so a chord button that was just pressed stays on the page.
+     */
+    function syncProgressionControls() {
+        const section = ui.chordGroups.querySelector('.picked-chords');
+        if (!section) return;
+        const playing = Boolean(progression);
+        const playButton = section.querySelector('.picks-play');
+        playButton.replaceChildren(el('span', null, playing ? '■' : '▶'), ' ', t(playing ? 'picks.stop' : 'picks.play'));
+        playButton.setAttribute('aria-pressed', String(playing));
+        if (!playing) {
+            section.querySelectorAll('.progression-current').forEach(button => button.classList.remove('progression-current'));
+        }
     }
 
     // ★ on the voicings in the popup or sheet that are in My chords
@@ -831,7 +862,7 @@
             (lead + i * PROGRESSION_STEP_S) * 1000));
         timers.push(setTimeout(() => stopProgression(), (lead + items.length * PROGRESSION_STEP_S) * 1000));
         progression = { timers };
-        renderPicks();
+        syncProgressionControls();
     }
 
     function showProgressionStep(item, index) {
@@ -847,7 +878,7 @@
         progression = null;
         const player = currentPlayer();
         if (silence && player) player.releaseAll(Tone.immediate(), 0.15);
-        renderPicks();
+        syncProgressionControls();
     }
 
     /** A chord button; `numeral` (e.g. "V7") is its function in the chosen key, if any. */
@@ -931,11 +962,6 @@
     }
 
     /**
-     * List a chord's voicings: in the popup next to `button` on wide screens, in
-     * the sheet on compact ones. `button` may be null when the sheet is reopened
-     * for a chord that's no longer on screen.
-     */
-    /**
      * The octave to list a chord's voicings in: the current one, unless the voicing that's
      * playing (a voicing picked into My chords) comes from another octave's list.
      */
@@ -947,6 +973,11 @@
         return [state.octave, bassOctave, bassOctave + 1].find(inList) ?? state.octave;
     }
 
+    /**
+     * List a chord's voicings: in the popup next to `button` on wide screens, in
+     * the sheet on compact ones. `button` may be null when the sheet is reopened
+     * for a chord that's no longer on screen.
+     */
     function openChordView(button, chord, { focus = false, octave = state.octave } = {}) {
         closeChordView();
         const compact = isCompact();
@@ -1112,8 +1143,10 @@
         syncSheetControls();
         if (state.lastPlayed) {
             const { chord } = state.lastPlayed;
-            const button = ui.chordGroups.querySelector(
-                `.chord-button[data-id="${CSS.escape(chord.entry.id)}"][data-tonic="${CSS.escape(chord.tonic)}"]`);
+            const selector = `.chord-button[data-id="${CSS.escape(chord.entry.id)}"][data-tonic="${CSS.escape(chord.tonic)}"]`;
+            // The chord's own place in the list, else its copy in My chords
+            const button = ui.chordGroups.querySelector(`.chord-group:not(.picked-chords) ${selector}`)
+                || ui.chordGroups.querySelector(selector);
             // The popup needs its chord button to sit next to; the sheet doesn't
             if (button || isCompact()) openChordView(button, chord, { octave: listOctave(chord, state.lastPlayed.voicing) });
         }
@@ -1310,6 +1343,7 @@
     function cutSound() {
         const player = currentPlayer();
         if (player) player.cut();
+        audio.lastStrum = null; // that strum was never heard: the next one goes down
     }
 
     // Notes played on the 88-key piano
@@ -1332,10 +1366,10 @@
         }
         const entry = audio.instruments[state.instrument];
         if (!entry || !entry.ready) {
-            if (entry && entry.failed) {
+            if (entry && entry.failed && performance.now() - entry.failedAt < RETRY_AFTER_MS) {
                 showStatus(`status.samplesUnavailable.${state.instrument}`, 'error');
             } else {
-                loadInstrument(state.instrument);
+                loadInstrument(state.instrument); // not loaded yet, or worth another try
                 showLoadingStatus();
             }
             return false;
@@ -1359,13 +1393,18 @@
         const existing = audio.instruments[name];
         if (existing && (existing.ready || existing.loading)) return;
         const instrument = INSTRUMENTS[name];
-        const entry = { player: null, loaded: 0, ready: false, failed: false, loading: true };
+        const entry = { player: null, loaded: 0, ready: false, failed: false, failedAt: 0, loading: true };
         audio.instruments[name] = entry;
         const isCurrent = () => state.instrument === name;
         if (isCurrent()) showLoadingStatus();
+        const format = instrument.formats.find(type => Tone.ToneAudioBuffer.supportsType(type))
+            || instrument.formats[instrument.formats.length - 1];
+        // One failed sample fails the instrument: stop downloading the others
+        const downloads = new AbortController();
         try {
             const buffers = await Promise.all(instrument.notes.map(async note => {
-                const buffer = await SamplePlayer.loadBuffer(instrument.baseUrl + instrument.file(note));
+                const url = `${instrument.baseUrl}${note.replace('#', 's')}.${format}`;
+                const buffer = await SamplePlayer.loadBuffer(url, { signal: downloads.signal });
                 entry.loaded++;
                 if (isCurrent() && !entry.failed) showLoadingStatus();
                 return [note, buffer];
@@ -1375,7 +1414,9 @@
             entry.ready = true;
             if (isCurrent()) showStatus(`status.ready.${name}`, 'success', 2000);
         } catch (error) {
+            downloads.abort();
             entry.failed = true;
+            entry.failedAt = performance.now();
             console.error(`Could not load the ${name} samples:`, error);
             if (isCurrent()) showStatus(`status.samplesFailed.${name}`, 'error');
         } finally {

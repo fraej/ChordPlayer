@@ -113,6 +113,8 @@ Both instruments play through `SamplePlayer` (`sample-player.js`), a small sampl
 | Release when the next chord starts | 1 s | 0.4 s (the strings are damped) |
 | Output level | 1 | 0.45 (the samples peak at −3 dBFS) |
 
+The guitar samples stop at D5 (a real guitar reaches about D6), so higher notes are pitch-shifted further and sound thinner; the top octaves of the 88-key keyboard aren't realistic on the guitar.
+
 The samples are fetched one by one so the app can show progress (with `fetch`, not Tone's loader, which would percent-encode the `@` of the versioned npm URL), and each sample's silent lead-in is trimmed to 2 ms before its attack. Chords of more than three notes play each note a little softer (√(3/n)), so a six-note chord is about as loud as a triad instead of clipping. Browsers only allow audio to start after a user gesture, so the audio context is resumed on the first click, tap or key press.
 
 Keeping the press-to-sound delay small:

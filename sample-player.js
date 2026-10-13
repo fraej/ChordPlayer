@@ -107,8 +107,8 @@
          * turns the "@" of a versioned npm URL (package@1.2.3/…) into "%40"; the URL is
          * fetched exactly as given instead.
          */
-        static async loadBuffer(url) {
-            const response = await fetch(url);
+        static async loadBuffer(url, { signal } = {}) {
+            const response = await fetch(url, { signal });
             if (!response.ok) throw new Error(`Could not load ${url} (${response.status})`);
             const audioBuffer = await Tone.getContext().decodeAudioData(await response.arrayBuffer());
             return new Tone.ToneAudioBuffer(audioBuffer);
