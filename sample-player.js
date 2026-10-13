@@ -1,5 +1,6 @@
 /**
- * PianoSampler - plays piano samples with Tone.js, built for low latency.
+ * SamplePlayer - plays an instrument's samples (piano, guitar…) with Tone.js, built
+ * for low latency.
  *
  * Works like Tone.Sampler (triggerAttack / triggerRelease / releaseAll, pitch-shifting
  * the nearest sample), with two differences that matter for responsiveness:
@@ -7,27 +8,28 @@
  *    cancelled before it sounds (Tone.Sampler's start envelope would bring it back);
  *  - cut() silences everything within 30 ms, for a touch that turns out to be a scroll.
  *
- * Exposed as `window.PianoSampler`.
+ * Exposed as `window.SamplePlayer`.
  */
 (function (root) {
     'use strict';
 
-    class PianoSampler {
+    class SamplePlayer {
         /**
          * @param {Object} [options]
          * @param {number} [options.release=1] - Seconds a released note takes to fade out
+         * @param {number} [options.volume=1] - Output gain (below 1 leaves headroom for chords)
          */
-        constructor({ release = 1 } = {}) {
+        constructor({ release = 1, volume = 1 } = {}) {
             this.release = release;
             this.samples = [];          // [{ midi, buffer }], sorted by pitch
             this.voices = new Set();    // sounding or scheduled notes: { midi, source, gain, start }
-            this.output = new Tone.Gain(1).toDestination();
+            this.output = new Tone.Gain(volume).toDestination();
         }
 
         /** Add a sample, e.g. ("C4", buffer). Leading silence is trimmed off first. */
         add(note, buffer) {
             const midi = Tone.Frequency(note).toMidi();
-            this.samples.push({ midi, buffer: PianoSampler.trimLeadingSilence(buffer) });
+            this.samples.push({ midi, buffer: SamplePlayer.trimLeadingSilence(buffer) });
             this.samples.sort((a, b) => a.midi - b.midi);
         }
 
@@ -101,6 +103,18 @@
         }
 
         /**
+         * Fetch and decode a sample. Tone's own loader would percent-encode the path, which
+         * turns the "@" of a versioned npm URL (package@1.2.3/…) into "%40"; the URL is
+         * fetched exactly as given instead.
+         */
+        static async loadBuffer(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Could not load ${url} (${response.status})`);
+            const audioBuffer = await Tone.getContext().decodeAudioData(await response.arrayBuffer());
+            return new Tone.ToneAudioBuffer(audioBuffer);
+        }
+
+        /**
          * Cut the quiet lead-in before a sample's attack (silence in the recording, or the
          * padding an MP3 encoder adds), so notes sound as soon as they're played. The cut
          * starts 2 ms before the first sample that reaches 1% (-40 dB) of the peak.
@@ -121,5 +135,5 @@
         }
     }
 
-    root.PianoSampler = PianoSampler;
+    root.SamplePlayer = SamplePlayer;
 })(window);

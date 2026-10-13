@@ -215,8 +215,9 @@ select, .chord-filter {
     gap: 6px;
 }
 
-/* Globe + language code; the native select sits invisibly on top so the
-   platform's own picker opens (a wheel on phones, a list on desktop) */
+/* Globe + language code (and the instrument picker, which looks the same); the
+   native select sits invisibly on top so the platform's own picker opens (a wheel
+   on phones, a list on desktop) */
 .language-control {
     position: relative;
     display: inline-flex;
@@ -238,6 +239,26 @@ select, .chord-filter {
     width: 16px;
     height: 16px;
     fill: currentColor;
+}
+
+/* Only the chosen instrument's icon shows */
+.instrument-control .instrument-icon {
+    display: none;
+    width: 18px;
+    height: 18px;
+}
+
+.instrument-control[data-instrument="piano"] [data-instrument-icon="piano"],
+.instrument-control[data-instrument="guitar"] [data-instrument-icon="guitar"] {
+    display: block;
+}
+
+.instrument-icon-hole {
+    fill: var(--surface);
+}
+
+.instrument-name {
+    letter-spacing: 0;
 }
 
 .language-control select {
@@ -643,6 +664,19 @@ select, .chord-filter {
 .no-matches {
     margin: 8px 0 0;
     color: var(--muted);
+}
+
+/* Who made the sounds (the samples are CC BY) */
+.credits {
+    padding: 0 max(20px, env(safe-area-inset-right)) 4px max(20px, env(safe-area-inset-left));
+    font-size: 0.75rem;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--muted);
+}
+
+.credits a {
+    color: inherit;
 }
 
 /* ------------------------------------------------------------------
@@ -1496,11 +1530,16 @@ select, .chord-filter {
     }
 
     .app-title {
-        font-size: 1.5rem;
+        font-size: 1.25rem;
     }
 
     .controls {
         margin-left: auto;
+    }
+
+    /* The instrument's icon is enough */
+    .instrument-name {
+        display: none;
     }
 
     /* The picker already shows the root in red */
@@ -1583,9 +1622,9 @@ select, .chord-filter {
 
     .play-style button,
     .info-toggle {
-        min-width: 40px;
+        min-width: 38px;
         min-height: 38px;
-        padding: 4px 8px;
+        padding: 4px 7px;
     }
 
     /* Wider keys are easier to hit; the piano scrolls to whatever plays */
@@ -1600,8 +1639,8 @@ select, .chord-filter {
     }
 }
 
-/* Landscape phones: keep the dock low so there's room for the chords */
-/* Very narrow phones: the octave select speaks for itself next to the title */
+/* Very narrow phones: the octave select speaks for itself next to the title, and
+   the globe needs no language code (both keep their names for screen readers) */
 @media (max-width: 379px) {
     .octave-label {
         position: absolute;
@@ -1611,8 +1650,13 @@ select, .chord-filter {
         clip: rect(0 0 0 0);
         white-space: nowrap;
     }
+
+    .language-code {
+        display: none;
+    }
 }
 
+/* Landscape phones: keep the dock low so there's room for the chords */
 @media (max-height: 500px) and (orientation: landscape) {
     .now-playing {
         gap: 8px;

@@ -1,6 +1,6 @@
 # 🎹 Chord Player
 
-An interactive web app for exploring chord structures, voicings, and inversions — played on a sampled grand piano right in your browser.
+An interactive web app for exploring chord structures, voicings, and inversions — played on a sampled grand piano or acoustic guitar right in your browser.
 
 ![Screenshot](Screenshot.png)
 
@@ -26,12 +26,13 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 
   It's a sidebar on wide screens, and the About tab of the chord sheet on phones and tablets.
 - **Details on or off** — once you close the voicings/details (✕, <kbd>Esc</kbd> or clicking the chord again), they stay closed: later chords just play, with the chord info still updating in the sidebar on wide screens. The **Details** button in the bottom bar turns them back on (and shows them for the chord that's playing).
-- **Block or arpeggio** playback.
+- **Piano or guitar** — a sampled grand piano, or a steel-string acoustic guitar picked from the instrument menu next to the language. The guitar's samples are only downloaded once you choose it.
+- **Block, arpeggio or strum** playback. A strum rolls the notes quickly from low to high, like a guitar; strum again within 0.4 s and it comes back up, so tapping in rhythm gives a down-up strumming pattern.
 - **Playable 88-key keyboard** fixed at the bottom: highlights the sounding notes (root in red), labels them, scrolls to them, and plays notes when you click, drag across or tap the keys.
 - **Smart pitch clamping** — voicings are moved down whole octaves until they sit at or below C7, so high inversions of extended chords don't get shrill.
 - **Made for phones too** — tapping a chord opens one sheet above the piano with **Voicings** and **About** tabs (a side panel in landscape), instead of popups. The header fits in two rows, buttons are finger-sized, piano keys get wider and scroll to whatever plays, and the layout keeps clear of the iPhone notch and home indicator.
 - **7 languages** — English, Español, Français, Deutsch, Italiano, Português and Català, switchable from the 🌐 picker in the header. Everything is translated: controls, chord names, the chord info panel (interval names, recipes, descriptions, keys and scales) and the screen-reader labels (German even reads the root keys as Cis, Es, B and H). The first visit follows your browser's language. Note names stay as letters (C D E…), as in international chord symbols.
-- **Remembers your settings** (root, ♯/♭, octave, play style, sheet tab, details on/off, language, key, My chords) between visits.
+- **Remembers your settings** (root, ♯/♭, octave, instrument, play style, sheet tab, details on/off, language, key, My chords) between visits.
 - **Dark mode** that follows your system setting.
 - **Loading progress** for the piano samples, with a clear message if they can't be loaded.
 
@@ -42,7 +43,7 @@ An interactive web app for exploring chord structures, voicings, and inversions 
 | Structure | HTML5 |
 | Styling | Vanilla CSS with custom properties (Google Fonts — Pacifico) |
 | Logic | Vanilla JavaScript (no build step) |
-| Audio | [Tone.js](https://tonejs.github.io/) 14.8 — Sampler with Salamander Grand Piano samples |
+| Audio | [Tone.js](https://tonejs.github.io/) 14.8 — a small sampler of our own (`sample-player.js`) playing Salamander Grand Piano or tonejs-instruments acoustic guitar samples |
 | Music Theory | [Tonal](https://github.com/tonaljs/tonal) 6.5 — note, chord, and interval utilities |
 | Keyboards | Custom SVG components (root picker + 88-key piano) |
 
@@ -79,7 +80,7 @@ Then open `http://localhost:8080/` in your browser.
 5. Hold a chord, or a voicing in its popup or sheet, to add it to **My chords** at the top (hold it there to remove it), then tap them to build a progression, or press **▶ Play in order**.
 6. Close the popup or sheet with ✕, <kbd>Esc</kbd>, or by clicking the chord again: it then stays closed for the next chords, until you press **Details** in the bottom bar. (On wide screens, clicking elsewhere also closes the popup, just for that chord.) Clicking another chord while it's open switches straight to it.
 7. Pick the interface language with the 🌐 button next to the octave selector.
-8. Use the octave selector to shift the register, and **Block / Arpeggio** in the bottom bar to change how chords are played.
+8. Use the octave selector to shift the register, the instrument menu to switch between piano and guitar, and **Block / Arpeggio / Strum** in the bottom bar to change how chords are played.
 9. Play single notes on the big keyboard at the bottom; on a phone, swipe it sideways to scroll.
 
 ## Project Structure
@@ -90,7 +91,7 @@ styles.css      Styling, layout, dark mode
 i18n.js         Interface languages: string tables for en, es, fr, de, it, pt, ca
 theory.js       Music theory: chord catalogue, spelling, voicings, chord info (no DOM)
 keyboard.js     SVG keyboard components: RootKeyboard and PianoKeyboard
-piano.js        PianoSampler: low-latency piano sample playback on Tone.js
+sample-player.js  SamplePlayer: low-latency sample playback (piano, guitar) on Tone.js
 script.js       App logic: UI wiring, voicing popup / sheet, chord info, audio, settings
 LICENSE         GPLv3
 ```
@@ -102,10 +103,20 @@ LICENSE         GPLv3
 
 ## Audio
 
-Plays the Salamander samples through `PianoSampler` (`piano.js`), a small sampler built on Tone.js: a sparse sample map (A, C, D♯, F♯ across octaves) pitch-shifted in between, like `Tone.Sampler`, but with a gain per note so a note scheduled a few milliseconds ahead can still be cancelled. The samples are loaded one by one so the app can show progress, as Ogg (or MP3 where Ogg isn't supported, e.g. Safari), and each sample's silent lead-in is trimmed to 2 ms before its attack. Release is 1 second. Browsers only allow audio to start after a user gesture, so the audio context is resumed on the first click, tap or key press.
+Both instruments play through `SamplePlayer` (`sample-player.js`), a small sampler built on Tone.js: a sparse sample map pitch-shifted in between, like `Tone.Sampler`, but with a gain per note so a note scheduled a few milliseconds ahead can still be cancelled.
+
+| | Piano | Guitar |
+|---|---|---|
+| Samples | [Salamander Grand Piano](https://sfzinstruments.github.io/pianos/salamander/), hosted by Tone.js | Acoustic guitar from [tonejs-instruments](https://github.com/nbrosowsky/tonejs-instruments), via the npm package `tonejs-instrument-guitar-acoustic-mp3@1.1.2` on jsDelivr |
+| Sample map | A, C, D♯, F♯ from A0 to C8 (30 files), Ogg or MP3 (Safari) | D, F, G♯, B from D2 to D5 (13 files, ~2.4 MB), MP3 |
+| Loaded | at start (if it's the chosen instrument) | when first chosen |
+| Release when the next chord starts | 1 s | 0.4 s (the strings are damped) |
+| Output level | 1 | 0.45 (the samples peak at −3 dBFS) |
+
+The samples are fetched one by one so the app can show progress (with `fetch`, not Tone's loader, which would percent-encode the `@` of the versioned npm URL), and each sample's silent lead-in is trimmed to 2 ms before its attack. Chords of more than three notes play each note a little softer (√(3/n)), so a six-note chord is about as loud as a triad instead of clipping. Browsers only allow audio to start after a user gesture, so the audio context is resumed on the first click, tap or key press.
 
 Keeping the press-to-sound delay small:
-- Notes are scheduled on the audio clock for "now" (no look-ahead), before the page redraws anything; arpeggios are scheduled on the audio clock too.
+- Notes are scheduled on the audio clock for "now" (no look-ahead), before the page redraws anything; arpeggios and strums are scheduled on the audio clock too.
 - Mouse and pen: chord, voicing and replay buttons sound as the button goes down, not on release.
 - Touch: the sound is scheduled 30 ms ahead as soon as the finger lands, and the details open when the tap completes. If the finger moves first (scrolling the chord list), the note is cancelled before it sounds, or cut within ~30 ms if it already started. The audio clock is used because mobile browsers hold back page timers while a finger is down (a 30 ms timer fires after ~120 ms).
 - Piano keys sound on touch/press.
@@ -136,7 +147,8 @@ Distributed under the **GNU General Public License v3.0**. See [`LICENSE`](LICEN
 
 ## Attribution
 
-- Piano samples: [Salamander Grand Piano](https://sfzinstruments.github.io/pianos/salamander/) (via Tone.js CDN)
+- Piano samples: [Salamander Grand Piano](https://sfzinstruments.github.io/pianos/salamander/) by Alexander Holm, CC BY 3.0 (via the Tone.js CDN)
+- Guitar samples: [tonejs-instruments](https://github.com/nbrosowsky/tonejs-instruments) by Nicholas Brosowsky, CC BY 3.0 (via npm and jsDelivr)
 - Libraries: [Tone.js](https://tonejs.github.io/), [Tonal](https://github.com/tonaljs/tonal)
 
 ## Contributing

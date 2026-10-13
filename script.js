@@ -2,9 +2,9 @@
  * Chord Player - app logic
  *
  * Wires the root picker, chord grid, voicings, chord info and 88-key piano
- * together and plays everything on a sampled grand piano (Tone.js).
- * Music theory lives in theory.js, the keyboards in keyboard.js and the
- * interface languages in i18n.js.
+ * together and plays everything on a sampled grand piano or acoustic guitar.
+ * Music theory lives in theory.js, the keyboards in keyboard.js, sample playback
+ * in sample-player.js and the interface languages in i18n.js.
  *
  * Two layouts share the same elements:
  *  - wide screens: voicings in a popup next to the chord, chord info in a sidebar
@@ -13,15 +13,37 @@
 (function () {
     'use strict';
 
-    // Salamander Grand Piano samples hosted by Tone.js. The set is sparse
-    // (a sample every minor third); the sampler pitch-shifts the notes in between.
-    const SAMPLE_BASE_URL = 'https://tonejs.github.io/audio/salamander/';
-    const SAMPLE_NOTES = [
-        'A0', 'C1', 'D#1', 'F#1', 'A1', 'C2', 'D#2', 'F#2', 'A2', 'C3',
-        'D#3', 'F#3', 'A3', 'C4', 'D#4', 'F#4', 'A4', 'C5', 'D#5', 'F#5',
-        'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7', 'D#7', 'F#7', 'A7', 'C8'
-    ];
+    // The instruments: sparse sample sets (a sample every three semitones) that the
+    // player pitch-shifts in between. Both sets are CC BY 3.0, credited on the page.
+    const INSTRUMENTS = {
+        // Salamander Grand Piano, hosted by Tone.js
+        piano: {
+            baseUrl: 'https://tonejs.github.io/audio/salamander/',
+            notes: [
+                'A0', 'C1', 'D#1', 'F#1', 'A1', 'C2', 'D#2', 'F#2', 'A2', 'C3',
+                'D#3', 'F#3', 'A3', 'C4', 'D#4', 'F#4', 'A4', 'C5', 'D#5', 'F#5',
+                'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7', 'D#7', 'F#7', 'A7', 'C8'
+            ],
+            // Ogg where the browser supports it, MP3 otherwise (Safari), as Tone.js decides
+            file: note => `${note.replace('#', 's')}.${Tone.ToneAudioBuffer.supportsType('ogg') ? 'ogg' : 'mp3'}`,
+            release: 1,
+            volume: 1
+        },
+        // Steel-string acoustic guitar from tonejs-instruments, served from npm by jsDelivr.
+        // Only loaded once it's chosen.
+        guitar: {
+            baseUrl: 'https://cdn.jsdelivr.net/npm/tonejs-instrument-guitar-acoustic-mp3@1.1.2/',
+            notes: ['D2', 'F2', 'G#2', 'B2', 'D3', 'F3', 'G#3', 'B3', 'D4', 'F4', 'G#4', 'B4', 'D5'],
+            file: note => `${note.replace('#', 's')}.mp3`,
+            release: 0.4,       // a new chord damps the strings that were still ringing
+            volume: 0.45        // every sample peaks at -3 dBFS: leave headroom for big chords
+        }
+    };
     const ARPEGGIO_STEP_MS = 140;
+    // A strum rolls the notes this far apart, low to high (or high to low on the way up)
+    const STRUM_STEP_MS = 25;
+    // A strum this soon after a down-strum comes back up, like a strumming hand
+    const STRUM_ALTERNATE_S = 0.4;
     // Touch: a pressed button sounds this long after the finger lands, unless it moves
     // further than TOUCH_SLOP_PX first (it's scrolling), which cancels the sound
     const TOUCH_HOLD_MS = 30;
@@ -39,21 +61,21 @@
         rootPc: 0,              // selected root as a pitch class (0 = C)
         accidentals: 'sharp',   // how black-key roots are spelled: 'sharp' | 'flat'
         octave: 4,
-        playStyle: 'block',     // 'block' | 'arpeggio'
+        playStyle: 'block',     // 'block' | 'arpeggio' | 'strum'
+        instrument: 'piano',    // a key of INSTRUMENTS
         sheetTab: 'about',      // tab shown in the sheet on compact screens: 'voicings' | 'about'
         showDetails: true,      // open the voicings popup / sheet when a chord is clicked
         language: null,         // interface language picked by the user, or null to follow the browser
         keyTonic: null,         // pitch class of the chosen key's tonic, or null to show every chord on the root
-        keyScale: 'major',
-        picks: [],              // My chords, in the order they were added: [{ id, tonic }]      // a ChordTheory.KEY_SCALE_IDS id: 'major', 'dorian' … 'minor', 'locrian', 'harmonic', 'melodic'
+        keyScale: 'major',      // a ChordTheory.KEY_SCALE_IDS id: 'major', 'dorian' … 'minor', 'locrian', 'harmonic', 'melodic'
+        picks: [],              // My chords, in the order they were added (see "My chords" below)
         lastPlayed: null        // { chord, voicing }, for replay and the info panel
     };
 
     const audio = {
-        sampler: null,
-        loadedSamples: 0,
-        ready: false,
-        failed: false
+        unavailable: false,     // Tone.js didn't load: no sound at all
+        instruments: {},        // per instrument, once it starts loading: { player, loaded, ready, failed, loading }
+        lastStrum: null         // { time, down } of the last strum, so quick strums alternate
     };
 
     // Below this width the sheet replaces the voicing popup and the info sidebar
@@ -108,9 +130,9 @@
         syncSheetControls();
 
         if (window.Tone) {
-            loadPiano();
+            loadInstrument(state.instrument);
         } else {
-            audio.failed = true;
+            audio.unavailable = true;
             showStatus('status.audioFailed', 'error');
         }
     }
@@ -125,6 +147,9 @@
             keyScale: byId('keyScale'),
             language: byId('language'),
             languageCode: document.querySelector('.language-code'),
+            instrument: byId('instrument'),
+            instrumentControl: document.querySelector('.instrument-control'),
+            instrumentName: document.querySelector('.instrument-name'),
             rootKeyboard: byId('rootKeyboard'),
             octave: byId('octave'),
             accidentalButtons: [...document.querySelectorAll('[data-accidentals]')],
@@ -156,6 +181,7 @@
 
     function bindEvents() {
         ui.language.addEventListener('change', () => setLanguage(ui.language.value));
+        ui.instrument.addEventListener('change', () => setInstrument(ui.instrument.value));
         ui.keyTonic.addEventListener('change', () => setKey(ui.keyTonic.value === '' ? null : Number(ui.keyTonic.value), state.keyScale));
         ui.keyScale.addEventListener('change', () => setKey(state.keyTonic, ui.keyScale.value));
         ui.octave.addEventListener('change', () => {
@@ -275,7 +301,9 @@
                 press.timer = setTimeout(fireHold, LONG_PRESS_MS);
             }
             if (event.pointerType === 'touch') {
-                const target = resolve(button);
+                // While My chords plays in order, wait for the tap: a finger that starts
+                // scrolling the list shouldn't stop the progression
+                const target = progression ? null : resolve(button);
                 touch = { pointerId: event.pointerId, button, x: event.clientX, y: event.clientY, sounded: false };
                 if (target) touch.sounded = sound(target.voicing.notes, { delay: TOUCH_HOLD_MS / 1000 });
                 return;
@@ -398,6 +426,7 @@
         ui.language.value = code;
         ui.languageCode.textContent = code.toUpperCase();
         I18n.translatePage(document);
+        renderInstrumentOptions();
         if (!state.lastPlayed) ui.nowDetail.textContent = t('hint');
         if (statusMessage && !ui.status.hidden) ui.status.textContent = t(statusMessage.key, statusMessage.vars);
     }
@@ -494,6 +523,34 @@
         saveSettings();
     }
 
+    /** Switch to another instrument, loading its samples the first time. */
+    function setInstrument(name) {
+        if (!(name in INSTRUMENTS) || name === state.instrument) return;
+        stopProgression();
+        const previous = currentPlayer();
+        if (previous && window.Tone) previous.releaseAll(Tone.immediate(), 0.3);
+        state.instrument = name;
+        audio.lastStrum = null;
+        saveSettings();
+        syncControls();
+        if (window.Tone) loadInstrument(name);
+    }
+
+    function renderInstrumentOptions() {
+        ui.instrument.replaceChildren(...Object.keys(INSTRUMENTS).map(name => {
+            const option = el('option', null, t(`instrument.${name}`));
+            option.value = name;
+            return option;
+        }));
+        syncInstrument();
+    }
+
+    function syncInstrument() {
+        ui.instrument.value = state.instrument;
+        ui.instrumentControl.dataset.instrument = state.instrument;
+        ui.instrumentName.textContent = t(`instrument.${state.instrument}`);
+    }
+
     function syncControls() {
         ui.rootName.textContent = ChordTheory.formatNote(rootName());
         ui.octave.value = String(state.octave);
@@ -509,6 +566,7 @@
         ui.playStyleButtons.forEach(button => {
             button.setAttribute('aria-pressed', String(button.dataset.playStyle === state.playStyle));
         });
+        syncInstrument();
     }
 
     function loadSettings() {
@@ -527,8 +585,11 @@
         if ([...ui.octave.options].some(option => Number(option.value) === saved.octave)) {
             state.octave = saved.octave;
         }
-        if (saved.playStyle === 'block' || saved.playStyle === 'arpeggio') {
+        if (['block', 'arpeggio', 'strum'].includes(saved.playStyle)) {
             state.playStyle = saved.playStyle;
+        }
+        if (saved.instrument in INSTRUMENTS) {
+            state.instrument = saved.instrument;
         }
         if (saved.sheetTab === 'voicings' || saved.sheetTab === 'about') {
             state.sheetTab = saved.sheetTab;
@@ -556,10 +617,12 @@
     }
 
     function saveSettings() {
-        const { rootPc, accidentals, octave, playStyle, sheetTab, showDetails, language, keyTonic, keyScale, picks } = state;
+        const {
+            rootPc, accidentals, octave, playStyle, instrument, sheetTab, showDetails, language, keyTonic, keyScale, picks
+        } = state;
         try {
             localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-                rootPc, accidentals, octave, playStyle, sheetTab, showDetails, language, keyTonic, keyScale, picks
+                rootPc, accidentals, octave, playStyle, instrument, sheetTab, showDetails, language, keyTonic, keyScale, picks
             }));
         } catch (error) {
             // Storage unavailable (e.g. private browsing): settings just won't persist
@@ -747,21 +810,21 @@
     }
 
     /**
-     * Play My chords in order, PROGRESSION_STEP_S each, block or arpeggio. The notes are
-     * all scheduled on the audio clock up front; timers only follow along on screen.
+     * Play My chords in order, PROGRESSION_STEP_S each, in the current play style. The
+     * notes are all scheduled on the audio clock up front; timers only follow along on
+     * screen.
      */
     function playProgression() {
         const items = state.picks.map(resolvePick).filter(Boolean);
         if (items.length === 0 || !prepareAudio()) return;
+        const player = currentPlayer();
         const lead = 0.05;
         const start = Tone.immediate() + lead;
-        audio.sampler.releaseAll(Tone.immediate());
+        player.releaseAll(Tone.immediate());
         items.forEach((item, i) => {
-            const names = item.voicing.notes.map(note => ChordTheory.midiToNoteName(ChordTheory.midi(note)));
-            const at = start + i * PROGRESSION_STEP_S;
-            const end = at + PROGRESSION_STEP_S * (i === items.length - 1 ? 2 : 1);
-            const offsets = names.map((name, n) => (state.playStyle === 'arpeggio' ? (n * ARPEGGIO_STEP_MS) / 1000 : 0));
-            names.forEach((name, n) => audio.sampler.triggerAttack(name, at + offsets[n], 1, end - (at + offsets[n])));
+            const duration = PROGRESSION_STEP_S * (i === items.length - 1 ? 2 : 1);
+            scheduleChord(player, item.voicing.notes.map(playerNote), start + i * PROGRESSION_STEP_S,
+                { duration, direction: 'down' });
         });
 
         const timers = items.map((item, i) => setTimeout(() => showProgressionStep(item, i),
@@ -782,7 +845,8 @@
         if (!progression) return;
         progression.timers.forEach(clearTimeout);
         progression = null;
-        if (silence && audio.ready) audio.sampler.releaseAll(Tone.immediate(), 0.15);
+        const player = currentPlayer();
+        if (silence && player) player.releaseAll(Tone.immediate(), 0.15);
         renderPicks();
     }
 
@@ -1185,7 +1249,7 @@
     }
 
     /**
-     * Play notes as a block or an arpeggio, `delay` seconds from now, replacing whatever
+     * Play notes in the current play style, `delay` seconds from now, replacing whatever
      * was sounding. Everything is scheduled on the audio clock, so a busy page can't
      * hold notes up. Returns whether anything was played.
      */
@@ -1193,43 +1257,85 @@
         if (!prepareAudio()) return false;
         stopProgression(); // a chord played by hand takes over (its releaseAll cancels the rest)
 
-        // The sampler gets sharp-spelled names; it doesn't need the chord spelling
-        const names = notes.map(note => ChordTheory.midiToNoteName(ChordTheory.midi(note)));
+        const player = currentPlayer();
         const start = Tone.immediate() + delay;
-        audio.sampler.releaseAll(start);
-
-        if (state.playStyle === 'arpeggio') {
-            names.forEach((name, i) => audio.sampler.triggerAttack(name, start + (i * ARPEGGIO_STEP_MS) / 1000));
-        } else {
-            audio.sampler.triggerAttack(names, start);
-        }
+        player.releaseAll(start);
+        scheduleChord(player, notes.map(playerNote), start);
         return true;
+    }
+
+    // The player gets sharp-spelled names; it doesn't need the chord spelling
+    const playerNote = note => ChordTheory.midiToNoteName(ChordTheory.midi(note));
+
+    /**
+     * Start a chord's notes (low to high) at `start`: together (block), one after another
+     * (arpeggio), or rolled quickly like a strum, with the first strings hit hardest.
+     * A strum goes down (low to high) unless `direction` says otherwise or it follows a
+     * down-strum within STRUM_ALTERNATE_S, when it comes back up. With a `duration`, all
+     * the notes are released when it's up.
+     *
+     * Chords of more than three notes are played a little softer per note (√(3/n)), so a
+     * six-note chord is about as loud as a triad instead of clipping.
+     */
+    function scheduleChord(player, names, start, { duration, direction } = {}) {
+        const level = Math.min(1, Math.sqrt(3 / names.length));
+        if (state.playStyle === 'block') {
+            player.triggerAttack(names, start, level, duration);
+            return;
+        }
+        const strum = state.playStyle === 'strum';
+        const order = strum && (direction || strumDirection(start)) === 'up' ? [...names].reverse() : names;
+        const step = (strum ? STRUM_STEP_MS : ARPEGGIO_STEP_MS) / 1000;
+        order.forEach((name, i) => {
+            const accent = strum ? 1 - (0.25 * i) / Math.max(1, order.length - 1) : 1;
+            player.triggerAttack(name, start + i * step, level * accent, duration === undefined ? undefined : duration - i * step);
+        });
+    }
+
+    function strumDirection(time) {
+        const last = audio.lastStrum;
+        const followsDown = last && last.direction === 'down' && time >= last.time && time - last.time < STRUM_ALTERNATE_S;
+        const direction = followsDown ? 'up' : 'down';
+        audio.lastStrum = { time, direction };
+        return direction;
+    }
+
+    /** The current instrument's player, or null while it's loading (or failed to load). */
+    function currentPlayer() {
+        const entry = audio.instruments[state.instrument];
+        return entry && entry.ready ? entry.player : null;
     }
 
     /** Silence everything at once, including notes not started yet (a touch that turned into a scroll). */
     function cutSound() {
-        if (audio.ready) audio.sampler.cut();
+        const player = currentPlayer();
+        if (player) player.cut();
     }
 
     // Notes played on the 88-key piano
     function startNote(midi) {
         if (prepareAudio()) {
-            audio.sampler.triggerAttack(ChordTheory.midiToNoteName(midi), Tone.immediate());
+            currentPlayer().triggerAttack(ChordTheory.midiToNoteName(midi), Tone.immediate());
         }
     }
 
     function stopNote(midi) {
-        if (audio.ready) {
-            audio.sampler.triggerRelease(ChordTheory.midiToNoteName(midi), Tone.immediate());
-        }
+        const player = currentPlayer();
+        if (player) player.triggerRelease(ChordTheory.midiToNoteName(midi), Tone.immediate());
     }
 
-    /** Report whether the piano can play yet, resuming audio if needed. */
+    /** Report whether the current instrument can play yet (loading it if needed), resuming audio. */
     function prepareAudio() {
-        if (!audio.ready) {
-            if (audio.failed) {
-                showStatus('status.samplesUnavailable', 'error');
+        if (audio.unavailable) {
+            showStatus('status.audioFailed', 'error');
+            return false;
+        }
+        const entry = audio.instruments[state.instrument];
+        if (!entry || !entry.ready) {
+            if (entry && entry.failed) {
+                showStatus(`status.samplesUnavailable.${state.instrument}`, 'error');
             } else {
+                loadInstrument(state.instrument);
                 showLoadingStatus();
             }
             return false;
@@ -1245,32 +1351,44 @@
         }
     }
 
-    async function loadPiano() {
-        showLoadingStatus();
+    /**
+     * Load an instrument's samples one by one, showing progress while it's the current
+     * instrument. Does nothing if it's loaded or loading; tries again after a failure.
+     */
+    async function loadInstrument(name) {
+        const existing = audio.instruments[name];
+        if (existing && (existing.ready || existing.loading)) return;
+        const instrument = INSTRUMENTS[name];
+        const entry = { player: null, loaded: 0, ready: false, failed: false, loading: true };
+        audio.instruments[name] = entry;
+        const isCurrent = () => state.instrument === name;
+        if (isCurrent()) showLoadingStatus();
         try {
-            const buffers = await Promise.all(SAMPLE_NOTES.map(async note => {
-                // Ogg where the browser supports it, MP3 otherwise (Safari)
-                const file = `${note.replace('#', 's')}.[ogg|mp3]`;
-                const buffer = await Tone.ToneAudioBuffer.fromUrl(SAMPLE_BASE_URL + file);
-                audio.loadedSamples++;
-                if (!audio.failed) showLoadingStatus();
+            const buffers = await Promise.all(instrument.notes.map(async note => {
+                const buffer = await SamplePlayer.loadBuffer(instrument.baseUrl + instrument.file(note));
+                entry.loaded++;
+                if (isCurrent() && !entry.failed) showLoadingStatus();
                 return [note, buffer];
             }));
-            audio.sampler = new PianoSampler({ release: 1 });
-            buffers.forEach(([note, buffer]) => audio.sampler.add(note, buffer));
-            audio.ready = true;
-            showStatus('status.ready', 'success', 2000);
+            entry.player = new SamplePlayer({ release: instrument.release, volume: instrument.volume });
+            buffers.forEach(([note, buffer]) => entry.player.add(note, buffer));
+            entry.ready = true;
+            if (isCurrent()) showStatus(`status.ready.${name}`, 'success', 2000);
         } catch (error) {
-            audio.failed = true;
-            console.error('Could not load the piano samples:', error);
-            showStatus('status.samplesFailed', 'error');
+            entry.failed = true;
+            console.error(`Could not load the ${name} samples:`, error);
+            if (isCurrent()) showStatus(`status.samplesFailed.${name}`, 'error');
+        } finally {
+            entry.loading = false;
         }
     }
 
     function showLoadingStatus() {
+        const entry = audio.instruments[state.instrument];
+        const total = INSTRUMENTS[state.instrument].notes.length;
         // Whole tens, so screen readers aren't flooded with updates
-        const percent = Math.floor((audio.loadedSamples / SAMPLE_NOTES.length) * 10) * 10;
-        showStatus('status.loading', 'loading', 0, { percent });
+        const percent = Math.floor(((entry ? entry.loaded : 0) / total) * 10) * 10;
+        showStatus(`status.loading.${state.instrument}`, 'loading', 0, { percent });
     }
 
     /** Show a status message, given as an I18n key and its variables. */
