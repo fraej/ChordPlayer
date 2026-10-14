@@ -410,7 +410,7 @@
     /** The language in use: the user's pick, else the browser's, else English. */
     const currentLanguage = () => state.language || I18n.detect(navigator.languages || [navigator.language]);
 
-    // Screen-reader name of a root key: "C#" -> "C sharp", "Do sostenido", "Cis"…
+    // Screen-reader name of a root key: "C#" -> "C sharp", "C sostenido", "Cis"…
     const spokenName = name => t('spoken', { letter: name.charAt(0), accidental: name.slice(1) });
 
     function setupLanguagePicker() {
@@ -1161,8 +1161,8 @@
     function syncSheetControls() {
         ui.info.dataset.tab = state.sheetTab;
         ui.sheetTabs.forEach(tab => tab.setAttribute('aria-pressed', String(tab.dataset.tab === state.sheetTab)));
+        // An on/off switch (details on chord clicks), not a disclosure: aria-pressed only
         ui.infoToggle.setAttribute('aria-pressed', String(state.showDetails));
-        ui.infoToggle.setAttribute('aria-expanded', String(Boolean(view)));
     }
 
     // Opening the sheet can cover the chord that was just tapped (or, in landscape,
@@ -1353,9 +1353,10 @@
         }
     }
 
-    function stopNote(midi) {
+    // A key whose touch turned into a scroll of the keyboard is cut short
+    function stopNote(midi, { cancelled = false } = {}) {
         const player = currentPlayer();
-        if (player) player.triggerRelease(ChordTheory.midiToNoteName(midi), Tone.immediate());
+        if (player) player.triggerRelease(ChordTheory.midiToNoteName(midi), Tone.immediate(), cancelled ? 0.03 : undefined);
     }
 
     /** Report whether the current instrument can play yet (loading it if needed), resuming audio. */

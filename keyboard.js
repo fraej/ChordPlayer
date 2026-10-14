@@ -86,7 +86,11 @@
             const addKey = (pc, x, black) => {
                 const width = black ? blackWidth : whiteWidth;
                 const keyHeight = black ? blackHeight : height;
-                const key = svgElement('g', { class: `key ${black ? 'black' : 'white'}`, role: 'radio', 'data-pc': pc });
+                // DOM order is white keys first, so give screen readers each key's place in the octave
+                const key = svgElement('g', {
+                    class: `key ${black ? 'black' : 'white'}`, role: 'radio', 'data-pc': pc,
+                    'aria-posinset': pc + 1, 'aria-setsize': 12
+                });
                 key.appendChild(svgElement('rect', { x, y: 0, width, height: keyHeight, rx: 3 }));
                 const label = svgElement('text', { x: x + width / 2, y: keyHeight - 10, 'aria-hidden': 'true' });
                 key.appendChild(label);
@@ -147,6 +151,7 @@
         }
 
         handleKeyDown(event) {
+            if (event.altKey || event.ctrlKey || event.metaKey) return; // browser shortcuts (Alt+← is Back)
             const steps = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
             let pc;
             if (event.key in steps) {
@@ -182,7 +187,8 @@
          * @param {number} [options.minWhiteKeyWidth=18] - Keys never get narrower than this;
          *   the container scrolls horizontally instead
          * @param {function(number)} [options.onNoteOn] - Called with a MIDI note when a key is pressed
-         * @param {function(number)} [options.onNoteOff] - Called with a MIDI note when a key is released
+         * @param {function(number, Object)} [options.onNoteOff] - Called with a MIDI note when a key is
+         *   released, and { cancelled: true } when the browser took the touch over to scroll
          * @param {string} [options.label="Piano keyboard"] - Accessible name of the keyboard
          */
         constructor(container, { low = 21, high = 108, minWhiteKeyWidth = 18, onNoteOn = null, onNoteOff = null, label = 'Piano keyboard' } = {}) {
@@ -199,14 +205,48 @@
             this.render();
             this.bindPointerEvents();
 
-            // Redraw whenever the available width changes so the keys always fill it
-            this.renderedWidth = this.container.clientWidth;
-            new ResizeObserver(() => {
-                if (this.container.clientWidth !== this.renderedWidth) {
-                    this.renderedWidth = this.container.clientWidth;
-                    this.render();
+            // Redraw when the available width changes, so the keys always fill it, or when
+            // the CSS sizes change (media queries on the window's height can do that alone)
+            const update = () => this.renderIfChanged();
+            new ResizeObserver(update).observe(this.container);
+            window.addEventListener('resize', update);
+
+            // Remember which note is in the middle of the view, to keep it there when the
+            // keyboard is redrawn. Not while a resize is under way: the browser has already
+            // clamped the scroll position to the new width by then.
+            this.container.addEventListener('scroll', () => {
+                if (this.drawn && this.container.clientWidth === this.drawn.width) {
+                    this.middle = this.keyAt(this.container.scrollLeft + this.container.clientWidth / 2);
                 }
-            }).observe(this.container);
+            }, { passive: true });
+        }
+
+        /** Width, height and minimum key width the keyboard should have right now. */
+        measure() {
+            const style = getComputedStyle(this.container);
+            return {
+                width: this.container.clientWidth,
+                height: parseFloat(style.getPropertyValue('--piano-height')) || 120,
+                minKeyWidth: parseFloat(style.getPropertyValue('--piano-key-min')) || this.minWhiteKeyWidth
+            };
+        }
+
+        renderIfChanged() {
+            const size = this.measure();
+            const drawn = this.drawn;
+            if (drawn && size.width === drawn.width && size.height === drawn.height && size.minKeyWidth === drawn.minKeyWidth) return;
+            // Keep the same note in the middle of the view (scrollLeft alone would drift)
+            const middle = this.middle;
+            this.render();
+            if (middle !== null && middle !== undefined) this.centerOn(middle);
+        }
+
+        /** The white key under a horizontal position in the drawing, or null. */
+        keyAt(x) {
+            for (const [midi, key] of this.keys) {
+                if (!isBlackKey(midi) && x >= key.x && x < key.x + key.width) return midi;
+            }
+            return null;
         }
 
         render() {
@@ -215,11 +255,11 @@
                 if (!isBlackKey(midi)) whiteCount++;
             }
             // CSS can override the key size per screen (e.g. wider keys on phones)
-            const style = getComputedStyle(this.container);
-            const minKeyWidth = parseFloat(style.getPropertyValue('--piano-key-min')) || this.minWhiteKeyWidth;
-            const keyWidth = Math.max(minKeyWidth, this.container.clientWidth / whiteCount);
+            const size = this.measure();
+            this.drawn = size;
+            const keyWidth = Math.max(size.minKeyWidth, size.width / whiteCount);
             const width = keyWidth * whiteCount;
-            const height = parseFloat(style.getPropertyValue('--piano-height')) || 120;
+            const height = size.height;
             const blackWidth = keyWidth * 0.6;
             const blackHeight = height * 0.62;
 
@@ -302,6 +342,7 @@
             const key = this.keys.get(midi);
             if (key) {
                 this.container.scrollLeft = key.x + key.width / 2 - this.container.clientWidth / 2;
+                this.middle = midi;
             }
         }
 
@@ -328,7 +369,6 @@
                 if (event.pointerType === 'mouse' && event.button !== 0) return;
                 const midi = keyAt(event.clientX, event.clientY);
                 if (midi === null) return;
-                if (event.pointerType === 'mouse') event.preventDefault(); // no text selection while dragging
                 this.press(event.pointerId, midi);
             });
 
@@ -342,9 +382,9 @@
                 }
             });
 
-            const release = event => this.release(event.pointerId);
-            window.addEventListener('pointerup', release);
-            window.addEventListener('pointercancel', release);
+            window.addEventListener('pointerup', event => this.release(event.pointerId));
+            // The browser took the touch over to scroll the keyboard: that note wasn't meant
+            window.addEventListener('pointercancel', event => this.release(event.pointerId, { cancelled: true }));
         }
 
         press(pointerId, midi) {
@@ -354,14 +394,14 @@
             if (typeof this.onNoteOn === 'function') this.onNoteOn(midi);
         }
 
-        release(pointerId) {
+        release(pointerId, { cancelled = false } = {}) {
             if (!this.pointers.has(pointerId)) return;
             const midi = this.pointers.get(pointerId);
             this.pointers.delete(pointerId);
             // Another finger may still be holding the same key
             if (![...this.pointers.values()].includes(midi)) {
                 this.setPressed(midi, false);
-                if (typeof this.onNoteOff === 'function') this.onNoteOff(midi);
+                if (typeof this.onNoteOff === 'function') this.onNoteOff(midi, { cancelled });
             }
         }
 

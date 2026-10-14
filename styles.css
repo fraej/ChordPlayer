@@ -7,7 +7,7 @@
     --page: #f5f7fa;
     --surface: #ffffff;
     --text: #1f2933;
-    --muted: #6b7785;
+    --muted: #5f6b78;       /* ≥ 4.5:1 on every light background, tinted ones included */
     --border: #d8dee6;
     --hover: #eef2f6;
     --focus: #1e88e5;
@@ -18,6 +18,7 @@
     --primary-hover: #bbdefb;
 
     --root: #d32f2f;
+    --root-text: #c62828;   /* red text: ≥ 4.5:1 on the soft backgrounds too */
     --root-soft: #ffebee;
     --root-border: #ffcdd2;
 
@@ -72,6 +73,7 @@
         --primary-hover: #1f3a52;
 
         --root: #ef5350;
+        --root-text: #ff7b78;
         --root-soft: #3a1d20;
         --root-border: #6b2b2f;
 
@@ -202,7 +204,7 @@ select, .chord-filter {
     padding: 6px 12px;
     font-weight: bold;
     text-align: center;
-    color: var(--root);
+    color: var(--root-text);
     background-color: var(--root-soft);
     border: 1px solid var(--root-border);
     border-bottom: 2px solid var(--root);
@@ -496,7 +498,7 @@ select, .chord-filter {
 }
 
 .picked-chords .chord-group-title {
-    color: var(--root);
+    color: var(--root-text);
 }
 
 .picks-header {
@@ -516,7 +518,7 @@ select, .chord-filter {
     padding: 3px 10px;
     font-size: 0.85em;
     font-weight: 600;
-    color: var(--root);
+    color: var(--root-text);
     background: var(--surface);
     border: 1px solid var(--root-border);
     border-radius: 6px;
@@ -542,13 +544,13 @@ select, .chord-filter {
 /* A voicing that's in My chords */
 .voicing-button.picked::after {
     content: " ★";
-    color: var(--root);
+    color: var(--root-text);
 }
 
 /* A chord that's in My chords */
 .chord-button.picked .chord-symbol::after {
     content: " ★";
-    color: var(--root);
+    color: var(--root-text);
     font-size: 0.85em;
 }
 
@@ -581,7 +583,7 @@ select, .chord-filter {
 
 /* The scale degree of the selected root */
 .chord-group.current-degree .chord-group-title {
-    color: var(--root);
+    color: var(--root-text);
 }
 
 .chord-group.current-degree .chord-group-title::after {
@@ -818,6 +820,11 @@ select, .chord-filter {
     color: var(--muted);
 }
 
+/* Muted grey is too faint on the green of the voicing that's playing */
+.voicing-button.active-voicing .voicing-span {
+    color: inherit;
+}
+
 .voicing-empty {
     margin: 0;
     color: var(--muted);
@@ -961,7 +968,7 @@ select, .chord-filter {
 }
 
 .info-notes .root th {
-    color: var(--root);
+    color: var(--root-text);
 }
 
 .info-degree {

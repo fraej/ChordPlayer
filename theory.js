@@ -43,7 +43,8 @@
         'Madd9': 'add9',
         '6add9': '6/9',
         'M#5add9': '+add9',
-        'mM9': 'mMaj9'
+        'mM9': 'mMaj9',
+        'b9sus': '7b9sus'   // "C♭9sus" would read as a C♭ chord
     };
 
     const mod12 = n => ((n % 12) + 12) % 12;
@@ -161,21 +162,23 @@
         return groups;
     }
 
-    const normalizeQuery = text => text.toLowerCase()
+    const normalizeQuery = text => text
         .replace(/♯/g, '#')
         .replace(/♭/g, 'b')
         .replace(/\s+/g, ' ')
         .trim();
 
     /**
-     * Whether a catalogue entry matches a free-text filter (case-insensitive, ♯/♭ aware).
-     * Both the English and the translated chord name count.
+     * Whether a catalogue entry matches a free-text filter (♯/♭ aware). Chord symbols
+     * match as typed, since case matters there ("m7" is minor, "M7" major); chord names,
+     * English or translated, match whatever the case ("minor", "Dominant").
      */
     function entryMatches(entry, query) {
-        const q = normalizeQuery(query);
-        if (!q) return true;
-        return [entry.suffix, entry.name, chordName(entry), ...entry.aliases]
-            .some(text => normalizeQuery(text).includes(q));
+        const symbol = normalizeQuery(query);
+        if (!symbol) return true;
+        const words = symbol.toLowerCase();
+        return [entry.suffix, ...entry.aliases].some(text => normalizeQuery(text).includes(symbol))
+            || [entry.name, chordName(entry)].some(text => text.toLowerCase().includes(words));
     }
 
     /** Spelled chord tones, e.g. ("7", "C") -> ["C", "E", "G", "Bb"]. */
@@ -305,14 +308,19 @@
         return q + num;
     }
 
-    /** Distance in semitones as words: 7 -> "perfect fifth", 19 -> "octave + perfect fifth". */
-    function semitoneName(semitones) {
-        const octaves = Math.floor(semitones / 12);
-        const rest = semitones % 12;
-        const simple = rest === 0 ? '' : intervalName(Tonal.Interval.fromSemitones(rest));
-        if (octaves === 0) return simple || t('interval', { num: 1, q: 'P' });
+    /**
+     * The interval between two spelled notes in words, whole octaves split off:
+     * C4–G♯4 "augmented fifth" (not "minor sixth"), C4–E5 "octave + major third",
+     * C4–C6 "2 octaves".
+     */
+    function spanName(low, high) {
+        const { num, q } = Tonal.Interval.get(Tonal.Interval.distance(low, high));
+        const octaves = num === 8 ? 0 : Math.floor((num - 1) / 7);
+        const simple = num - 7 * octaves;
+        const simpleName = simple === 1 && q === 'P' && octaves > 0 ? '' : t('interval', { num: simple, q });
+        if (octaves === 0) return simpleName;
         const octaveText = t('octaves', octaves);
-        return simple ? `${octaveText} + ${simple}` : octaveText;
+        return simpleName ? `${octaveText} + ${simpleName}` : octaveText;
     }
 
     // A chord tone in a recipe: "minor 7th", "♭9th", "♯11th", "6th"
@@ -364,15 +372,19 @@
     function aliasSymbols(tonic, entry) {
         const root = formatNote(tonic);
         const shown = chordSymbol(tonic, entry);
-        const symbols = entry.aliases.map(alias => root + formatSuffix(alias.replace(/\^/g, 'Δ')));
+        // Tonal's "^" means major; it's written Δ only in front of a number (Δ7 = maj7).
+        // A bare Δ reads as maj7, so aliases like "^" (C major) and "^#5" are left out.
+        const symbols = entry.aliases
+            .filter(alias => !/\^(?!\d)/.test(alias))
+            .map(alias => root + formatSuffix(alias.replace(/\^/g, 'Δ')));
         return [...new Set(symbols)].filter(symbol => symbol !== shown);
     }
 
     /** Figured-bass label of an inverted triad or seventh chord ("6/4", "6/5"…), or null. */
     function figuredBass(entry, inversion) {
-        const numbers = entry.intervals.map(interval => Tonal.Interval.get(interval).num).join(',');
-        if (numbers === '1,3,5') return ['5/3', '6/3', '6/4'][inversion];
-        if (numbers === '1,3,5,7') return ['7', '6/5', '4/3', '4/2'][inversion];
+        const shape = shapeOf(entry);
+        if (shape === '1,3,5') return ['5/3', '6/3', '6/4'][inversion];
+        if (shape === '1,3,5,7') return ['7', '6/5', '4/3', '4/2'][inversion];
         return null;
     }
 
@@ -383,10 +395,11 @@
         { id: 'melodic', mode: 'minor', variant: 'melodic', tonal: 'melodic minor', steps: [0, 2, 3, 5, 7, 9, 11] }
     ];
 
-    // Scales the key picker offers: the seven modes of the major scale, in brightness
-    // order from the I18n "scale.<tonal>" labels' point of view, then the minor variants.
-    // `parentDegree` is the mode's degree in its parent major scale (D Dorian = 2nd of C major),
-    // which gives the mode its key signature and so its spelling.
+    // Scales the key picker offers: the seven modes of the major scale in the order of
+    // their degree in it (Ionian = major, Dorian … Aeolian = natural minor, Locrian), then
+    // harmonic and melodic minor. `parentDegree` is a mode's degree in its parent major
+    // scale (D Dorian = 2nd of C major), which gives the mode its key signature and so its
+    // spelling.
     const PICKER_SCALES = [
         KEY_SCALES[0],
         { id: 'dorian', tonal: 'dorian', parentDegree: 1, steps: [0, 2, 3, 5, 7, 9, 10] },
@@ -413,19 +426,12 @@
         // The numeral's case already says major/minor, so those symbols fold away
         const special = { 'M': '', 'm': '', 'dim': '°', 'aug': '+', 'm7b5': 'ø7', 'dim7': '°7' };
         let suffix = entry.id in special ? special[entry.id] : entry.suffix;
-        if (!(entry.id in special) && minor && /^m(?!aj)/.test(suffix)) {
+        if (!(entry.id in special) && minor && suffix.startsWith('m')) {
             suffix = suffix.slice(1);
         }
         return numeral + formatSuffix(suffix);
     }
 
-    /**
-     * Major and minor keys a chord belongs to, with its roman numeral there:
-     * [{ mode: 'major' | 'minor', variant: undefined | 'harmonic' | 'melodic', tonicPc, numeral }],
-     * major keys first, then by scale degree. Every chord tone has to sit on its own
-     * scale degree, so C°7 is vii°7 in D♭ minor but not a chord on the 6th of E minor,
-     * even though the same four pitches are in that scale.
-     */
     /** Whether a chord built on a scale degree (0-6) keeps every tone on its own degree of the scale. */
     function fitsDegree(entry, steps, degree) {
         return entry.intervals.every(interval => {
@@ -435,6 +441,13 @@
         });
     }
 
+    /**
+     * Major and minor keys a chord belongs to, with its roman numeral there:
+     * [{ mode: 'major' | 'minor', variant: undefined | 'harmonic' | 'melodic', tonicPc, degree, numeral }],
+     * major keys first, then by scale degree. Every chord tone has to sit on its own
+     * scale degree, so C°7 is vii°7 in C♯ (harmonic) minor but not a chord on the 6th
+     * of E minor, even though the same four pitches are in that scale.
+     */
     function keyFunctions(entry, rootPc) {
         const found = new Map();
         for (const scale of KEY_SCALES) {
@@ -456,6 +469,21 @@
     function keyName(tonicPc, mode, accidentals) {
         const names = mode === 'major' ? MAJOR_KEY_NAMES : MINOR_KEY_NAMES;
         return names[mod12(tonicPc)] || pitchClassName(tonicPc, accidentals);
+    }
+
+    /**
+     * Name of a key a chord was found in (see keyFunctions), spelled from the chord's own
+     * root so the two agree: C♯ is I in C♯ major, not D♭ major. When that spelling would
+     * need a double accidental or more than seven sharps or flats (D♯ as V of G♯ major),
+     * the usual key name is used instead.
+     */
+    function chordKeyName(tonic, found, accidentals) {
+        const scale = KEY_SCALES.find(candidate => candidate.mode === found.mode && candidate.variant === found.variant);
+        const step = Tonal.Scale.get(`C ${scale.tonal}`).intervals[found.degree];
+        const spelled = Tonal.Note.transpose(Tonal.Note.pitchClass(tonic), `-${step}`);
+        const signature = (found.mode === 'major' ? Tonal.Key.majorKey(spelled) : Tonal.Key.minorKey(spelled)).alteration;
+        const plain = Math.abs(Tonal.Note.get(spelled).alt) <= 1 && Math.abs(signature) <= 7;
+        return plain ? spelled : keyName(found.tonicPc, found.mode, accidentals);
     }
 
     /**
@@ -550,7 +578,7 @@
             })),
             keys: keyFunctions(entry, Tonal.Note.chroma(tonic)).map(found => ({
                 ...found,
-                key: formatNote(keyName(found.tonicPc, found.mode, accidentals))
+                key: formatNote(chordKeyName(tonic, found, accidentals))
             })),
             scales: fittingScales(entry).map(label => t('scale.chip', { root, scale: label }))
         };
@@ -570,7 +598,7 @@
             slash: inversion > 0 ? `${chordSymbol(tonic, entry)}/${bass}` : null,
             figure: figuredBass(entry, inversion),
             span,
-            spanName: semitoneName(span),
+            spanName: spanName(notes[0], notes[notes.length - 1]),
             steps: notes.slice(1).map((note, i) => {
                 const interval = Tonal.Interval.distance(notes[i], note);
                 return { short: intervalShort(interval), name: intervalName(interval) };

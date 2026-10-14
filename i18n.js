@@ -26,11 +26,13 @@
     // Grammar helpers
     // ---------------------------------------------------------------------
 
-    // Interval names: "major third", "tercera mayor", "große Terz"…
-    function intervalNamer(numbers, qualities, nounFirst) {
+    // Interval names: "major third", "tercera mayor", "große Terz"… `unisonQualities`
+    // are the quality words for the unison where its noun has another gender than the
+    // other intervals ("unísono aumentado" but "quinta aumentada").
+    function intervalNamer(numbers, qualities, nounFirst, unisonQualities = qualities) {
         return ({ num, q }) => {
             const number = numbers[num] || String(num);
-            const quality = qualities[q] || q;
+            const quality = (num === 1 ? unisonQualities : qualities)[q] || q;
             if (num === 8 && q === 'P') return number;   // just "octave"
             if (num === 1 && q === 'P') return number;   // just "unison"
             return nounFirst ? `${number} ${quality}` : `${quality} ${number}`;
@@ -65,7 +67,7 @@
         'voicings.close': 'Close voicings',
         'voicings.of': '{chord} voicings',
         'voicings.none': 'No voicings available',
-        'piano': 'Piano',
+        'dock': 'Player',
         'pianoKeyboard': 'Piano keyboard',
         'rootNote': 'Root note',
         'playAgain': 'Play again',
@@ -98,7 +100,7 @@
         'voicing.close': 'Close',
         'voicing.open': 'Open',
         'inversion': n => (n === 0 ? 'Root position' : `${enOrdinal(n)} inversion`),
-        'span.short': '{n}st',
+        'span.short': '{n} st',
         'span.title': 'Spans {n} semitones',
         'span.aria': '{notes}, spans {n} semitones',
 
@@ -275,7 +277,7 @@
         'voicings.close': 'Cerrar disposiciones',
         'voicings.of': 'Disposiciones de {chord}',
         'voicings.none': 'No hay disposiciones',
-        'piano': 'Piano',
+        'dock': 'Reproductor',
         'pianoKeyboard': 'Teclado de piano',
         'rootNote': 'Nota fundamental',
         'playAgain': 'Volver a tocar',
@@ -342,8 +344,8 @@
         'key.all': 'Cualquiera',
         'picks.title': 'Mis acordes',
         'picks.hint': 'Mantén pulsado un acorde o una de sus disposiciones para añadirlo aquí, y mantenlo pulsado aquí para quitarlo. Luego tócalos en el orden que quieras, o reprodúcelos en orden.',
-        'picks.added': '{chord} añadido a Mis acordes',
-        'picks.removed': '{chord} quitado de Mis acordes',
+        'picks.added': '{chord} añadido a mis acordes',
+        'picks.removed': '{chord} quitado de mis acordes',
         'picks.play': 'Tocar en orden',
         'picks.stop': 'Parar',
         'key.main': 'Acordes principales',
@@ -385,7 +387,8 @@
             ['', 'unísono', 'segunda', 'tercera', 'cuarta', 'quinta', 'sexta', 'séptima', 'octava',
                 'novena', 'décima', 'undécima', 'duodécima', 'decimotercera', 'decimocuarta', 'decimoquinta'],
             { P: 'justa', M: 'mayor', m: 'menor', A: 'aumentada', d: 'disminuida', AA: 'doble aumentada', dd: 'doble disminuida' },
-            true),
+            true,
+            { P: 'justo', A: 'aumentado', d: 'disminuido', AA: 'doble aumentado', dd: 'doble disminuido' }),
         'interval.root': 'fundamental',
         'octaves': n => (n === 1 ? 'octava' : `${n} octavas`),
         'spoken': ({ letter, accidental }) =>
@@ -519,7 +522,7 @@
         'voicings.close': 'Fermer les dispositions',
         'voicings.of': 'Dispositions de {chord}',
         'voicings.none': 'Aucune disposition',
-        'piano': 'Piano',
+        'dock': 'Lecteur',
         'pianoKeyboard': 'Clavier de piano',
         'rootNote': 'Note fondamentale',
         'playAgain': 'Rejouer',
@@ -539,7 +542,7 @@
         'details.title': 'Afficher les dispositions et les infos quand un accord est joué (oui/non)',
 
         'status.theoryFailed': 'Impossible de charger la bibliothèque de théorie musicale. Vérifiez votre connexion et rechargez la page.',
-        'status.audioFailed': 'Impossible de charger la bibliothèque audio  : aucun son ne peut être joué. Vérifiez votre connexion et rechargez la page.',
+        'status.audioFailed': 'Impossible de charger la bibliothèque audio : aucun son ne peut être joué. Vérifiez votre connexion et rechargez la page.',
         'status.samplesUnavailable.piano': 'Les sons du piano n’ont pas pu être chargés. Rechargez la page pour réessayer.',
         'status.samplesFailed.piano': 'Impossible de charger les sons du piano. Vérifiez votre connexion et rechargez la page.',
         'status.loading.piano': 'Chargement des sons du piano… {percent} %',
@@ -586,8 +589,8 @@
         'key.all': 'Toutes',
         'picks.title': 'Mes accords',
         'picks.hint': 'Maintenez appuyé un accord ou l’une de ses dispositions pour l’ajouter ici, et maintenez-le ici pour le retirer. Jouez-les ensuite dans l’ordre que vous voulez, ou enchaînez-les.',
-        'picks.added': '{chord} ajouté à Mes accords',
-        'picks.removed': '{chord} retiré de Mes accords',
+        'picks.added': '{chord} ajouté à mes accords',
+        'picks.removed': '{chord} retiré de mes accords',
         'picks.play': 'Jouer dans l’ordre',
         'picks.stop': 'Arrêter',
         'key.main': 'Accords principaux',
@@ -629,7 +632,8 @@
             ['', 'unisson', 'seconde', 'tierce', 'quarte', 'quinte', 'sixte', 'septième', 'octave',
                 'neuvième', 'dixième', 'onzième', 'douzième', 'treizième', 'quatorzième', 'quinzième'],
             { P: 'juste', M: 'majeure', m: 'mineure', A: 'augmentée', d: 'diminuée', AA: 'sur-augmentée', dd: 'sous-diminuée' },
-            true),
+            true,
+            { P: 'juste', A: 'augmenté', d: 'diminué', AA: 'sur-augmenté', dd: 'sous-diminué' }),
         'interval.root': 'fondamentale',
         'octaves': n => (n === 1 ? 'octave' : `${n} octaves`),
         'spoken': ({ letter, accidental }) =>
@@ -769,7 +773,7 @@
         'voicings.close': 'Voicings schließen',
         'voicings.of': 'Voicings für {chord}',
         'voicings.none': 'Keine Voicings',
-        'piano': 'Klavier',
+        'dock': 'Wiedergabe',
         'pianoKeyboard': 'Klaviatur',
         'rootNote': 'Grundton',
         'playAgain': 'Nochmal spielen',
@@ -836,8 +840,8 @@
         'key.all': 'Alle',
         'picks.title': 'Meine Akkorde',
         'picks.hint': 'Halte einen Akkord oder eines seiner Voicings gedrückt, um ihn hier hinzuzufügen, und halte ihn hier gedrückt, um ihn zu entfernen. Dann spiele sie in beliebiger Reihenfolge oder nacheinander ab.',
-        'picks.added': '{chord} zu Meine Akkorde hinzugefügt',
-        'picks.removed': '{chord} aus Meine Akkorde entfernt',
+        'picks.added': '{chord} zu meinen Akkorden hinzugefügt',
+        'picks.removed': '{chord} aus meinen Akkorden entfernt',
         'picks.play': 'Der Reihe nach spielen',
         'picks.stop': 'Stopp',
         'key.main': 'Hauptakkorde',
@@ -997,8 +1001,8 @@
         'accidentals.group': 'Scrivere i tasti neri con',
         'sharps': 'Diesis',
         'sharps.title': 'Diesis (C♯, D♯ …)',
-        'flats': 'Bemolle',
-        'flats.title': 'Bemolle (D♭, E♭ …)',
+        'flats': 'Bemolli',
+        'flats.title': 'Bemolli (D♭, E♭ …)',
         'chords': 'Accordi',
         'filter.placeholder': 'Filtra: m7, sus, ♭9, minore…',
         'filter.label': 'Filtra gli accordi',
@@ -1012,7 +1016,7 @@
         'voicings.close': 'Chiudi le disposizioni',
         'voicings.of': 'Disposizioni di {chord}',
         'voicings.none': 'Nessuna disposizione',
-        'piano': 'Pianoforte',
+        'dock': 'Lettore',
         'pianoKeyboard': 'Tastiera del pianoforte',
         'rootNote': 'Nota fondamentale',
         'playAgain': 'Suona di nuovo',
@@ -1079,8 +1083,8 @@
         'key.all': 'Tutte',
         'picks.title': 'I miei accordi',
         'picks.hint': 'Tieni premuto un accordo o una delle sue disposizioni per aggiungerlo qui, e tienilo premuto qui per toglierlo. Poi suonali nell’ordine che vuoi, o in sequenza.',
-        'picks.added': '{chord} aggiunto a I miei accordi',
-        'picks.removed': '{chord} tolto da I miei accordi',
+        'picks.added': '{chord} aggiunto ai miei accordi',
+        'picks.removed': '{chord} tolto dai miei accordi',
         'picks.play': 'Suona in ordine',
         'picks.stop': 'Ferma',
         'key.main': 'Accordi principali',
@@ -1122,7 +1126,8 @@
             ['', 'unisono', 'seconda', 'terza', 'quarta', 'quinta', 'sesta', 'settima', 'ottava',
                 'nona', 'decima', 'undicesima', 'dodicesima', 'tredicesima', 'quattordicesima', 'quindicesima'],
             { P: 'giusta', M: 'maggiore', m: 'minore', A: 'aumentata', d: 'diminuita', AA: 'più che aumentata', dd: 'più che diminuita' },
-            true),
+            true,
+            { P: 'giusto', A: 'aumentato', d: 'diminuito', AA: 'più che aumentato', dd: 'più che diminuito' }),
         'interval.root': 'fondamentale',
         'octaves': n => (n === 1 ? 'ottava' : `${n} ottave`),
         'spoken': ({ letter, accidental }) =>
@@ -1256,7 +1261,7 @@
         'voicings.close': 'Fechar disposições',
         'voicings.of': 'Disposições de {chord}',
         'voicings.none': 'Nenhuma disposição',
-        'piano': 'Piano',
+        'dock': 'Leitor',
         'pianoKeyboard': 'Teclado de piano',
         'rootNote': 'Nota fundamental',
         'playAgain': 'Tocar de novo',
@@ -1321,10 +1326,10 @@
         'scale.chip': '{root} {scale}',
         'key': 'Tonalidade',
         'key.all': 'Qualquer',
-        'picks.title': 'Meus acordes',
+        'picks.title': 'Os meus acordes',
         'picks.hint': 'Toque e segure um acorde ou uma das suas disposições para adicioná-lo aqui, e segure-o aqui para removê-lo. Depois toque-os na ordem que quiser, ou em sequência.',
-        'picks.added': '{chord} adicionado a Meus acordes',
-        'picks.removed': '{chord} removido de Meus acordes',
+        'picks.added': '{chord} adicionado aos meus acordes',
+        'picks.removed': '{chord} removido dos meus acordes',
         'picks.play': 'Tocar em ordem',
         'picks.stop': 'Parar',
         'key.main': 'Acordes principais',
@@ -1366,7 +1371,8 @@
             ['', 'uníssono', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sétima', 'oitava',
                 'nona', 'décima', 'décima primeira', 'décima segunda', 'décima terceira', 'décima quarta', 'décima quinta'],
             { P: 'justa', M: 'maior', m: 'menor', A: 'aumentada', d: 'diminuta', AA: 'dupla aumentada', dd: 'dupla diminuta' },
-            true),
+            true,
+            { P: 'justo', A: 'aumentado', d: 'diminuto', AA: 'duplo aumentado', dd: 'duplo diminuto' }),
         'interval.root': 'fundamental',
         'octaves': n => (n === 1 ? 'oitava' : `${n} oitavas`),
         'spoken': ({ letter, accidental }) =>
@@ -1500,7 +1506,7 @@
         'voicings.close': 'Tanca les disposicions',
         'voicings.of': 'Disposicions de {chord}',
         'voicings.none': 'No hi ha disposicions',
-        'piano': 'Piano',
+        'dock': 'Reproductor',
         'pianoKeyboard': 'Teclat de piano',
         'rootNote': 'Nota fonamental',
         'playAgain': 'Torna a tocar',
@@ -1551,7 +1557,7 @@
         'bass.slash': '{bass}, s’escriu {slash}',
         'bass.root': '{bass} (la fonamental)',
         'span.value': '{n} semitons ({name})',
-        'keys.none': 'No pertany a cap tonalitat major ni menor: algunes notes vénen de fora de la tonalitat, com en els acords alterats i cromàtics.',
+        'keys.none': 'No pertany a cap tonalitat major ni menor: algunes notes venen de fora de la tonalitat, com en els acords alterats i cromàtics.',
         'keys.major': 'Major',
         'keys.minor': 'Menor',
         'keys.in': ' en {key}',
@@ -1567,8 +1573,8 @@
         'key.all': 'Qualsevol',
         'picks.title': 'Els meus acords',
         'picks.hint': 'Mantén premut un acord o una de les seves disposicions per afegir-lo aquí, i mantén-lo premut aquí per treure’l. Després toca’ls en l’ordre que vulguis, o en seqüència.',
-        'picks.added': '{chord} afegit a Els meus acords',
-        'picks.removed': '{chord} tret d’Els meus acords',
+        'picks.added': '{chord} afegit als meus acords',
+        'picks.removed': '{chord} tret dels meus acords',
         'picks.play': 'Toca en ordre',
         'picks.stop': 'Atura',
         'key.main': 'Acords principals',
@@ -1610,7 +1616,8 @@
             ['', 'uníson', 'segona', 'tercera', 'quarta', 'cinquena', 'sisena', 'setena', 'octava',
                 'novena', 'desena', 'onzena', 'dotzena', 'tretzena', 'catorzena', 'quinzena'],
             { P: 'justa', M: 'major', m: 'menor', A: 'augmentada', d: 'disminuïda', AA: 'doblement augmentada', dd: 'doblement disminuïda' },
-            true),
+            true,
+            { P: 'just', A: 'augmentat', d: 'disminuït', AA: 'doblement augmentat', dd: 'doblement disminuït' }),
         'interval.root': 'fonamental',
         'octaves': n => (n === 1 ? 'octava' : `${n} octaves`),
         'spoken': ({ letter, accidental }) =>
@@ -1748,8 +1755,10 @@
         return Boolean(table && key in table);
     }
 
+    const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+
     function setLanguage(code) {
-        current = code in STRINGS ? code : 'en';
+        current = hasOwn(STRINGS, code) ? code : 'en';
         return current;
     }
 
@@ -1761,7 +1770,7 @@
     function detect(preferred) {
         for (const tag of preferred || []) {
             const base = String(tag).toLowerCase().split('-')[0];
-            if (base in STRINGS) return base;
+            if (hasOwn(STRINGS, base)) return base;
         }
         return 'en';
     }

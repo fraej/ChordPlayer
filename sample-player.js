@@ -6,7 +6,8 @@
  * the nearest sample), with two differences that matter for responsiveness:
  *  - every note has its own gain, so a note scheduled a few milliseconds ahead can be
  *    cancelled before it sounds (Tone.Sampler's start envelope would bring it back);
- *  - cut() silences everything within 30 ms, for a touch that turns out to be a scroll.
+ *  - cut() silences everything within 30 ms, release tails included, for a touch that
+ *    turns out to be a scroll.
  *
  * Exposed as `window.SamplePlayer`.
  */
@@ -23,6 +24,7 @@
             this.release = release;
             this.samples = [];          // [{ midi, buffer }], sorted by pitch
             this.voices = new Set();    // sounding or scheduled notes: { midi, source, gain, start }
+            this.releasing = new Set(); // released notes still fading out
             this.output = new Tone.Gain(volume).toDestination();
         }
 
@@ -34,6 +36,7 @@
         }
 
         nearestSample(midi) {
+            if (this.samples.length === 0) throw new Error('SamplePlayer: no samples added yet');
             return this.samples.reduce((best, sample) =>
                 (Math.abs(sample.midi - midi) < Math.abs(best.midi - midi) ? sample : best));
         }
@@ -55,6 +58,7 @@
                 const voice = { midi, source, gain, start: time };
                 source.onended = () => {
                     this.voices.delete(voice);
+                    this.releasing.delete(voice);
                     source.dispose();
                     gain.dispose();
                 };
@@ -65,11 +69,15 @@
             return this;
         }
 
-        /** Release the given notes at `time`, fading out over the release time. */
-        triggerRelease(notes, time = Tone.immediate()) {
+        /**
+         * Release the given notes at `time`, fading out over `fade` seconds (default: the
+         * release time). Notes of the same pitch scheduled to start later (the next chords
+         * of a progression) are left alone.
+         */
+        triggerRelease(notes, time = Tone.immediate(), fade = this.release) {
             const midis = [].concat(notes).map(note => Tone.Frequency(note).toMidi());
             for (const voice of [...this.voices]) {
-                if (midis.includes(voice.midi)) this.stopVoice(voice, time, this.release);
+                if (midis.includes(voice.midi) && voice.start <= time) this.stopVoice(voice, time, fade);
             }
             return this;
         }
@@ -80,8 +88,12 @@
             return this;
         }
 
-        /** Silence everything, including notes scheduled to start later, within 30 ms. */
+        /** Silence everything within 30 ms: notes scheduled to start later, sounding ones and release tails. */
         cut(time = Tone.immediate()) {
+            for (const voice of [...this.releasing]) {
+                voice.gain.gain.cancelAndHoldAtTime(time);
+                this.fadeOut(voice, time, 0.03);
+            }
             return this.releaseAll(time, 0.03);
         }
 
@@ -95,11 +107,13 @@
             }
             voice.gain.gain.cancelAndHoldAtTime(time);
             this.fadeOut(voice, time, fade);
+            this.releasing.add(voice);
         }
 
         fadeOut(voice, time, fade) {
-            voice.gain.gain.setTargetAtTime(0, time, fade / 6);   // ~-50 dB after `fade` seconds
-            voice.source.stop(time + fade);
+            const length = Math.max(fade, 0.005);   // a zero time constant would throw
+            voice.gain.gain.setTargetAtTime(0, time, length / 6);   // ~-50 dB after `length` seconds
+            voice.source.stop(time + length);
         }
 
         /**
@@ -121,8 +135,10 @@
          */
         static trimLeadingSilence(buffer) {
             const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i));
+            // A plucked or struck note peaks near its start: the first second is enough to look at
+            const scan = Math.min(buffer.length, Math.round(buffer.sampleRate));
             let peak = 0;
-            channels.forEach(data => { for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i])); });
+            channels.forEach(data => { for (let i = 0; i < scan; i++) peak = Math.max(peak, Math.abs(data[i])); });
             if (peak === 0) return buffer;
             const threshold = peak * 0.01;
             const onset = Math.min(...channels.map(data => {
