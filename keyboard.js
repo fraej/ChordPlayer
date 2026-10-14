@@ -62,12 +62,16 @@
          * @param {function(number)} [options.onSelect] - Called with the pitch class the user picks
          * @param {string} [options.label="Root note"] - Accessible name of the keyboard
          * @param {function(string): string} [options.spokenName] - Screen-reader name of a note, e.g. "C#" -> "C sharp"
+         * @param {function(string): string} [options.displayName] - Name shown on a key, e.g. "C#" -> "C♯" or "Do♯"
          */
-        constructor(container, { names, selected = 0, onSelect = null, label = 'Root note', spokenName = englishSpokenName } = {}) {
+        constructor(container, {
+            names, selected = 0, onSelect = null, label = 'Root note', spokenName = englishSpokenName, displayName = prettyName
+        } = {}) {
             this.container = resolveContainer(container);
             this.onSelect = onSelect;
             this.label = label;
             this.spokenName = spokenName;
+            this.displayName = displayName;
             this.render();
             this.setNames(names);
             this.select(selected);
@@ -111,15 +115,16 @@
         setNames(names) {
             this.names = names;
             this.keys.forEach(({ key, label }, pc) => {
-                label.textContent = prettyName(names[pc]);
+                label.textContent = this.displayName(names[pc]);
                 key.setAttribute('aria-label', this.spokenName(names[pc]));
             });
         }
 
-        /** Change the accessible names, e.g. when the interface language changes. */
-        setLabels({ label = this.label, spokenName = this.spokenName } = {}) {
+        /** Change how notes are named and announced, e.g. when the interface language changes. */
+        setLabels({ label = this.label, spokenName = this.spokenName, displayName = this.displayName } = {}) {
             this.label = label;
             this.spokenName = spokenName;
+            this.displayName = displayName;
             this.svg.setAttribute('aria-label', label);
             this.setNames(this.names);
         }
@@ -190,10 +195,16 @@
          * @param {function(number, Object)} [options.onNoteOff] - Called with a MIDI note when a key is
          *   released, and { cancelled: true } when the browser took the touch over to scroll
          * @param {string} [options.label="Piano keyboard"] - Accessible name of the keyboard
+         * @param {function(string): string} [options.letterName] - Name shown for a white key's letter,
+         *   e.g. "C" -> "C" or "Do"
          */
-        constructor(container, { low = 21, high = 108, minWhiteKeyWidth = 18, onNoteOn = null, onNoteOff = null, label = 'Piano keyboard' } = {}) {
+        constructor(container, {
+            low = 21, high = 108, minWhiteKeyWidth = 18, onNoteOn = null, onNoteOff = null,
+            label = 'Piano keyboard', letterName = letter => letter
+        } = {}) {
             this.container = resolveContainer(container);
             this.label = label;
+            this.letterName = letterName;
             this.low = low;
             this.high = high;
             this.minWhiteKeyWidth = minWhiteKeyWidth;
@@ -286,8 +297,9 @@
                 const keyHeight = black ? blackHeight : height;
                 const octave = Math.floor(midi / 12) - 1;
                 const letter = WHITE_KEY_LETTERS[pitchClassOf(midi)];
-                // White keys show their letter; each C also shows its octave
-                const defaultLabel = letter === 'C' ? `C${octave}` : letter;
+                // White keys show their name; each C also shows its octave
+                const name = letter ? this.letterName(letter) : '';
+                const defaultLabel = letter === 'C' ? `${name}${octave}` : name;
 
                 const group = svgElement('g', {
                     class: `key ${black ? 'black' : 'white'}${letter === 'C' ? ' c-key' : ''}`,
@@ -317,6 +329,14 @@
             if (this.svg) this.svg.setAttribute('aria-label', label);
         }
 
+        /** Change how the white keys are named ("C" or "Do"…), keeping the same notes in view. */
+        setLetterNames(letterName) {
+            this.letterName = letterName;
+            const middle = this.middle;
+            this.render();
+            if (middle !== null && middle !== undefined) this.centerOn(middle);
+        }
+
         /** Show which notes are sounding: [{ midi, label, root }]. Replaces the previous highlight. */
         highlight(notes) {
             this.highlighted = notes;
@@ -335,6 +355,22 @@
                 key.group.classList.toggle('root', Boolean(isRoot));
                 if (label) key.label.textContent = label;
             }
+            this.fitLabels();
+        }
+
+        // Squeeze names wider than their key ("Sol♯" on a narrow black key). All the
+        // writes come before all the measuring, so the browser lays the keys out once.
+        fitLabels() {
+            const keys = [...this.keys.values()];
+            keys.forEach(({ label }) => {
+                label.removeAttribute('textLength');
+                label.removeAttribute('lengthAdjust');
+            });
+            const tooWide = keys.filter(({ label, width }) => label.textContent && label.getComputedTextLength() > width - 2);
+            tooWide.forEach(({ label, width }) => {
+                label.setAttribute('textLength', width - 2);
+                label.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+            });
         }
 
         /** Scroll so a note sits in the middle of the visible part of the keyboard. */

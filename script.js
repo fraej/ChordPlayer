@@ -120,9 +120,15 @@
             selected: state.rootPc,
             onSelect: setRoot,
             label: t('rootNote'),
-            spokenName
+            spokenName,
+            displayName: ChordTheory.formatNote
         });
-        piano = new PianoKeyboard(ui.piano, { onNoteOn: startNote, onNoteOff: stopNote, label: t('pianoKeyboard') });
+        piano = new PianoKeyboard(ui.piano, {
+            onNoteOn: startNote,
+            onNoteOff: stopNote,
+            label: t('pianoKeyboard'),
+            letterName: ChordTheory.formatNote
+        });
         // On narrow screens the piano scrolls: start in the middle of the selected octave
         piano.centerOn(12 * (state.octave + 1) + 6);
 
@@ -410,7 +416,7 @@
     /** The language in use: the user's pick, else the browser's, else English. */
     const currentLanguage = () => state.language || I18n.detect(navigator.languages || [navigator.language]);
 
-    // Screen-reader name of a root key: "C#" -> "C sharp", "C sostenido", "Cis"…
+    // Screen-reader name of a root key: "C#" -> "C sharp", "Do sostenido", "Cis"…
     const spokenName = name => t('spoken', { letter: name.charAt(0), accidental: name.slice(1) });
 
     function setupLanguagePicker() {
@@ -442,11 +448,17 @@
 
         closeChordView();
         renderKeyOptions();
-        rootKeyboard.setLabels({ label: t('rootNote'), spokenName });
+        // Note names change too in the languages that use Do, Re, Mi…
+        rootKeyboard.setLabels({ label: t('rootNote'), spokenName, displayName: ChordTheory.formatNote });
         piano.setLabel(t('pianoKeyboard'));
+        piano.setLetterNames(ChordTheory.formatNote);
+        syncControls();
         renderChords();
         renderChordInfo();
-        if (state.lastPlayed) showNowPlaying(state.lastPlayed.chord, state.lastPlayed.voicing);
+        if (state.lastPlayed) {
+            showNowPlaying(state.lastPlayed.chord, state.lastPlayed.voicing);
+            highlightOnPiano(state.lastPlayed.chord, state.lastPlayed.voicing);
+        }
     }
 
     function setRoot(pc) {
@@ -1267,12 +1279,16 @@
         showNowPlaying(chord, voicing);
         renderChordInfo();
         syncSheetControls();
+        highlightOnPiano(chord, voicing);
+        piano.revealHighlight();
+    }
+
+    function highlightOnPiano(chord, voicing) {
         piano.highlight(voicing.notes.map(note => ({
             midi: ChordTheory.midi(note),
             label: ChordTheory.noteParts(note).name,
             root: ChordTheory.pitchClass(note) === chord.tonic
         })));
-        piano.revealHighlight();
     }
 
     function replay(sounded = false) {

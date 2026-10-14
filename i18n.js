@@ -4,8 +4,8 @@
  * English, Spanish, French, German, Italian, Portuguese and Catalan. Each
  * language is a table of keys; a value is either a string with {placeholders}
  * or a function of the variables (for grammar that needs it). Missing keys fall
- * back to English. Note names stay as letters (C, D, E…) in every language, as
- * in international chord symbols.
+ * back to English. Notes are named the way each language does: letters (C, D, E…)
+ * in English and German, solfège (Do, Re, Mi…) in the others.
  *
  * Exposed as `window.I18n` (or `module.exports`).
  */
@@ -38,6 +38,11 @@
             return nounFirst ? `${number} ${quality}` : `${quality} ${number}`;
         };
     }
+
+    // Note names: English and German write letters; the other languages sing them
+    const SOLFEGE = { C: 'Do', D: 'Re', E: 'Mi', F: 'Fa', G: 'Sol', A: 'La', B: 'Si' };
+    const SOLFEGE_FR = { ...SOLFEGE, D: 'Ré' };
+    const SOLFEGE_PT = { C: 'Dó', D: 'Ré', E: 'Mi', F: 'Fá', G: 'Sol', A: 'Lá', B: 'Si' };
 
     const enOrdinal = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
 
@@ -185,6 +190,7 @@
         'interval.root': 'root',
         'octaves': n => (n === 1 ? 'octave' : `${n} octaves`),
 
+        'noteName': ({ letter }) => letter,
         'spoken': ({ letter, accidental }) =>
             letter + (accidental === '#' ? ' sharp' : accidental === 'b' ? ' flat' : ''),
 
@@ -261,9 +267,9 @@
         'octave': 'Octava',
         'accidentals.group': 'Escribir las teclas negras con',
         'sharps': 'Sostenidos',
-        'sharps.title': 'Sostenidos (C♯, D♯ …)',
+        'sharps.title': 'Sostenidos (Do♯, Re♯ …)',
         'flats': 'Bemoles',
-        'flats.title': 'Bemoles (D♭, E♭ …)',
+        'flats.title': 'Bemoles (Re♭, Mi♭ …)',
         'chords': 'Acordes',
         'filter.placeholder': 'Filtrar: m7, sus, ♭9, menor…',
         'filter.label': 'Filtrar acordes',
@@ -391,8 +397,9 @@
             { P: 'justo', A: 'aumentado', d: 'disminuido', AA: 'doble aumentado', dd: 'doble disminuido' }),
         'interval.root': 'fundamental',
         'octaves': n => (n === 1 ? 'octava' : `${n} octavas`),
+        'noteName': ({ letter }) => SOLFEGE[letter],
         'spoken': ({ letter, accidental }) =>
-            letter + (accidental === '#' ? ' sostenido' : accidental === 'b' ? ' bemol' : ''),
+            SOLFEGE[letter] + (accidental === '#' ? ' sostenido' : accidental === 'b' ? ' bemol' : ''),
 
         'scale.major': 'mayor (jónico)',
         'scale.minor': 'menor natural (eólico)',
@@ -506,9 +513,9 @@
         'octave': 'Octave',
         'accidentals.group': 'Écrire les touches noires avec',
         'sharps': 'Dièses',
-        'sharps.title': 'Dièses (C♯, D♯ …)',
+        'sharps.title': 'Dièses (Do♯, Ré♯ …)',
         'flats': 'Bémols',
-        'flats.title': 'Bémols (D♭, E♭ …)',
+        'flats.title': 'Bémols (Ré♭, Mi♭ …)',
         'chords': 'Accords',
         'filter.placeholder': 'Filtrer : m7, sus, ♭9, mineur…',
         'filter.label': 'Filtrer les accords',
@@ -636,8 +643,9 @@
             { P: 'juste', A: 'augmenté', d: 'diminué', AA: 'sur-augmenté', dd: 'sous-diminué' }),
         'interval.root': 'fondamentale',
         'octaves': n => (n === 1 ? 'octave' : `${n} octaves`),
+        'noteName': ({ letter }) => SOLFEGE_FR[letter],
         'spoken': ({ letter, accidental }) =>
-            letter + (accidental === '#' ? ' dièse' : accidental === 'b' ? ' bémol' : ''),
+            SOLFEGE_FR[letter] + (accidental === '#' ? ' dièse' : accidental === 'b' ? ' bémol' : ''),
 
         'scale.major': 'majeure (ionien)',
         'scale.minor': 'mineure naturelle (éolien)',
@@ -886,6 +894,7 @@
             false),
         'interval.root': 'Grundton',
         'octaves': n => (n === 1 ? 'Oktave' : `${n} Oktaven`),
+        'noteName': ({ letter }) => letter,
         'spoken': ({ letter, accidental }) => GERMAN_NAMES[letter + accidental] || letter,
 
         'scale.major': 'Dur (Ionisch)',
@@ -1000,9 +1009,9 @@
         'octave': 'Ottava',
         'accidentals.group': 'Scrivere i tasti neri con',
         'sharps': 'Diesis',
-        'sharps.title': 'Diesis (C♯, D♯ …)',
+        'sharps.title': 'Diesis (Do♯, Re♯ …)',
         'flats': 'Bemolli',
-        'flats.title': 'Bemolli (D♭, E♭ …)',
+        'flats.title': 'Bemolli (Re♭, Mi♭ …)',
         'chords': 'Accordi',
         'filter.placeholder': 'Filtra: m7, sus, ♭9, minore…',
         'filter.label': 'Filtra gli accordi',
@@ -1130,8 +1139,9 @@
             { P: 'giusto', A: 'aumentato', d: 'diminuito', AA: 'più che aumentato', dd: 'più che diminuito' }),
         'interval.root': 'fondamentale',
         'octaves': n => (n === 1 ? 'ottava' : `${n} ottave`),
+        'noteName': ({ letter }) => SOLFEGE[letter],
         'spoken': ({ letter, accidental }) =>
-            letter + (accidental === '#' ? ' diesis' : accidental === 'b' ? ' bemolle' : ''),
+            SOLFEGE[letter] + (accidental === '#' ? ' diesis' : accidental === 'b' ? ' bemolle' : ''),
 
         'scale.major': 'maggiore (ionica)',
         'scale.minor': 'minore naturale (eolia)',
@@ -1245,9 +1255,9 @@
         'octave': 'Oitava',
         'accidentals.group': 'Escrever as teclas pretas com',
         'sharps': 'Sustenidos',
-        'sharps.title': 'Sustenidos (C♯, D♯ …)',
+        'sharps.title': 'Sustenidos (Dó♯, Ré♯ …)',
         'flats': 'Bemóis',
-        'flats.title': 'Bemóis (D♭, E♭ …)',
+        'flats.title': 'Bemóis (Ré♭, Mi♭ …)',
         'chords': 'Acordes',
         'filter.placeholder': 'Filtrar: m7, sus, ♭9, menor…',
         'filter.label': 'Filtrar acordes',
@@ -1375,8 +1385,9 @@
             { P: 'justo', A: 'aumentado', d: 'diminuto', AA: 'duplo aumentado', dd: 'duplo diminuto' }),
         'interval.root': 'fundamental',
         'octaves': n => (n === 1 ? 'oitava' : `${n} oitavas`),
+        'noteName': ({ letter }) => SOLFEGE_PT[letter],
         'spoken': ({ letter, accidental }) =>
-            letter + (accidental === '#' ? ' sustenido' : accidental === 'b' ? ' bemol' : ''),
+            SOLFEGE_PT[letter] + (accidental === '#' ? ' sustenido' : accidental === 'b' ? ' bemol' : ''),
 
         'scale.major': 'maior (jónica)',
         'scale.minor': 'menor natural (eólia)',
@@ -1490,9 +1501,9 @@
         'octave': 'Octava',
         'accidentals.group': 'Escriure les tecles negres amb',
         'sharps': 'Sostinguts',
-        'sharps.title': 'Sostinguts (C♯, D♯ …)',
+        'sharps.title': 'Sostinguts (Do♯, Re♯ …)',
         'flats': 'Bemolls',
-        'flats.title': 'Bemolls (D♭, E♭ …)',
+        'flats.title': 'Bemolls (Re♭, Mi♭ …)',
         'chords': 'Acords',
         'filter.placeholder': 'Filtra: m7, sus, ♭9, menor…',
         'filter.label': 'Filtra els acords',
@@ -1620,8 +1631,9 @@
             { P: 'just', A: 'augmentat', d: 'disminuït', AA: 'doblement augmentat', dd: 'doblement disminuït' }),
         'interval.root': 'fonamental',
         'octaves': n => (n === 1 ? 'octava' : `${n} octaves`),
+        'noteName': ({ letter }) => SOLFEGE[letter],
         'spoken': ({ letter, accidental }) =>
-            letter + (accidental === '#' ? ' sostingut' : accidental === 'b' ? ' bemoll' : ''),
+            SOLFEGE[letter] + (accidental === '#' ? ' sostingut' : accidental === 'b' ? ' bemoll' : ''),
 
         'scale.major': 'major (jònica)',
         'scale.minor': 'menor natural (eòlica)',

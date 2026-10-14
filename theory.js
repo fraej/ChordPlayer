@@ -44,7 +44,9 @@
         '6add9': '6/9',
         'M#5add9': '+add9',
         'mM9': 'mMaj9',
-        'b9sus': '7b9sus'   // "C♭9sus" would read as a C♭ chord
+        'b9sus': '7b9sus',  // "C♭9sus" would read as a C♭ chord
+        'oM7': '°M7',       // "o" is a typed stand-in for °
+        'o7M7': '°7M7'
     };
 
     const mod12 = n => ((n % 12) + 12) % 12;
@@ -68,20 +70,24 @@
         return alt > 0 ? '♯'.repeat(alt) : '♭'.repeat(-alt);
     }
 
+    // A note letter as the interface language names it: C D E… or Do Re Mi… (solfège).
+    // Only for display: the notes the app works with are always spelled with letters.
+    const letterName = letter => (root.I18n ? root.I18n.t('noteName', { letter }) : letter);
+
     /**
-     * Split a note into display parts using real accidentals:
-     * "Bb4" -> { name: "B♭", octave: 4 }, "F#" -> { name: "F♯", octave: null }.
+     * Split a note into display parts using real accidentals and the interface language's
+     * note names: "Bb4" -> { name: "B♭", octave: 4 } (or "Si♭"), "F#" -> { name: "F♯", octave: null }.
      */
     function noteParts(note) {
         const parsed = Tonal.Note.get(note);
         if (parsed.empty) return { name: note, octave: null };
         return {
-            name: parsed.letter + accidentalGlyphs(parsed.alt),
+            name: letterName(parsed.letter) + accidentalGlyphs(parsed.alt),
             octave: typeof parsed.oct === 'number' ? parsed.oct : null
         };
     }
 
-    /** "Bb4" -> "B♭4", "C#" -> "C♯". */
+    /** "Bb4" -> "B♭4" (or "Si♭4"), "C#" -> "C♯" (or "Do♯"). */
     function formatNote(note) {
         const { name, octave } = noteParts(note);
         return octave === null ? name : name + octave;
@@ -374,9 +380,10 @@
         const shown = chordSymbol(tonic, entry);
         // Tonal's "^" means major; it's written Δ only in front of a number (Δ7 = maj7).
         // A bare Δ reads as maj7, so aliases like "^" (C major) and "^#5" are left out.
+        // A leading "o" is a typed stand-in for ° ("Co7" = C°7; and "Sol" + "o" reads "Solo").
         const symbols = entry.aliases
             .filter(alias => !/\^(?!\d)/.test(alias))
-            .map(alias => root + formatSuffix(alias.replace(/\^/g, 'Δ')));
+            .map(alias => root + formatSuffix(alias.replace(/\^/g, 'Δ').replace(/^o/, '°')));
         return [...new Set(symbols)].filter(symbol => symbol !== shown);
     }
 
